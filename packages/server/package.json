@@ -1,0 +1,34 @@
+{
+  "name": "@inventory/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "migrate": "tsx src/db/migrate.ts",
+    "seed": "tsx src/scripts/seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:stress": "vitest run --dir test/stress"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.15",
+    "@fastify/cookie": "^11.0.2",
+    "@inventory/shared": "*",
+    "drizzle-orm": "^0.38.2",
+    "fastify": "^5.2.0",
+    "pino": "^9.5.0",
+    "uuid": "^11.0.3",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "pino-pretty": "^13.0.0",
+    "tsx": "^4.19.2",
+    "vitest": "^2.1.8"
+  }
+}

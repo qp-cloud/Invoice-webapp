@@ -1,0 +1,30 @@
+{
+  "name": "inventory",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/web"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build -w @inventory/shared && npm run build -w @inventory/server && npm run build -w @inventory/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "test": "npm run test -w @inventory/shared && npm run test -w @inventory/server && npm run test -w @inventory/web",
+    "test:e2e": "npm run test:e2e -w @inventory/web",
+    "test:stress": "npm run test:stress -w @inventory/server",
+    "dev": "npm run dev -w @inventory/server & npm run dev -w @inventory/web",
+    "migrate": "npm run migrate -w @inventory/server",
+    "seed": "npm run seed -w @inventory/server"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1"
+  }
+}

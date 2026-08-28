@@ -1,0 +1,169 @@
+# TASKS.md — Remaining Work
+
+> Phase-ordered task list. Governed by `PROJECT_SPEC.md` (source of truth).
+> Each task has a **Verify** line — the task is not done until that check passes.
+> Update the checkbox and add a date when a task is completed.
+> This is a **skeleton**. It is filled in with post-analysis detail during
+> `PROJECT_SPEC.md` §25 First Task (steps 4–9), before Phase 1 implementation begins.
+
+Legend: `[ ]` not started · `[~]` in progress · `[x]` done (add date)
+
+---
+
+## First Task (design & analysis — do before any Phase 1 code)
+
+- [x] 2026-08-29 — Re-read `PROJECT_SPEC.md`; §26/§28 extended during analysis.
+- [x] 2026-08-29 — Owner answers to `PROJECT_SPEC.md` §26 questions #1,2,3,5,7,9,10,11,12
+      (recorded in §26.1 + §27 Change Log v0.2).
+- [ ] Get owner answers to the remaining §26.2 questions (#4, #6, #8, #13–#16). #15
+      (cloud provider) and #16 (Task Scheduler install method) block Phase 8; the rest
+      have PROVISIONAL defaults baked into the docs and block only their own phase.
+      **Verify:** answers recorded in §26.1 + §27 Change Log.
+- [x] 2026-08-29 — `DATABASE.md`: enums, 17 tables, constraints, indexes, transaction
+      patterns, migrations `0001`–`0003`.
+- [x] 2026-08-29 — `API.md`: auth, all endpoints, idempotency contract, error catalogue.
+- [x] 2026-08-29 — `ARCHITECTURE.md`: layering, `shared` contract, directory tree,
+      sequence flows (sale online/offline, import commit, reconcile, backup, restore).
+- [x] 2026-08-29 — `TESTING.md`: runners, golden master, 9 suites mapped to §22.1,
+      coverage gates, verification levels.
+- [x] 2026-08-29 — `IMPORT_FORMAT.md`: headers + aliases + rules + codes + sample files
+      for MASTER_STOCK / PURCHASES / SALES.
+- [x] 2026-08-29 — `BACKUP_RECOVERY.md`: scheduling, 8-step pipeline, retention, restore,
+      secrets separation, 8 DR scenarios with drills, runbook.
+- [x] 2026-08-29 — `TASKS.md` per-phase detail + `PROGRESS.md` area table updated.
+- [ ] **STOP. Wait for owner confirmation before Phase 1 implementation.**  ◄ HERE NOW
+
+---
+
+## Phase 1 — Foundation
+- [ ] `git init`; base `.gitignore`; first commit.
+- [ ] npm workspaces: `packages/shared`, `packages/server`, `packages/web`.
+- [ ] TypeScript strict everywhere; shared `tsconfig` base.
+- [ ] `docker-compose.yml` with PostgreSQL 16; documented dev connection string.
+- [ ] Drizzle set up in `packages/server`; migration `0001` skeleton; `migrate` script.
+- [ ] Fastify boots; health route; structured `pino` logging to file.
+- [ ] Central error mapper (typed error code → HTTP + user message); shared `errors.ts`.
+- [ ] CI: install, lint, typecheck, test on every push.
+      **Verify:** `npm test` runs green (empty suites OK), server boots, `0001` applies
+      to a fresh DB, CI pipeline green.
+
+## Phase 2 — cleanData + Product Master
+- [ ] `packages/shared/src/cleanData/`: `sku.ts`, `number.ts`, `date.ts`, `index.ts`.
+- [ ] Unit tests for every `PROJECT_SPEC.md` §22.1 sanitization case.
+- [ ] `units`, `categories`, `products` tables + constraints (SKU UNIQUE, min_stock ≥ 0).
+- [ ] Product CRUD endpoints + zod schemas.
+- [ ] SKU UPSERT helper (match on sanitized SKU).
+- [ ] Web: product list + create/edit form.
+      **Verify:** all sanitization cases pass; DB rejects duplicate SKU; duplicate-create
+      returns typed error; UPSERT updates, never duplicates.
+
+## Phase 3 — Inventory ledger
+- [ ] `movements` table (signed qty, type enum, status, void fields, idempotency_key,
+      period_id, import fields) + constraints.
+- [ ] `stock_state`, `stock_cost_state` tables.
+- [ ] `replayLedger` pure function in `packages/shared`.
+- [ ] Per-product advisory lock helper; stock-changing ops run in one transaction that
+      locks → reads → checks → writes movement → updates caches.
+- [ ] Endpoints: `POST /purchases`, `/sales`, `/returns`, `/adjustments`,
+      `/documents/:id/void` (all idempotent).
+- [ ] `periods` table + open/close/reopen endpoints; write-path checks honour CLOSED.
+- [ ] `settings.current_fiscal_year` + current-FY sum helpers (dynamic 68/69 labels).
+- [ ] Backdate warning + reason-required-over-threshold; audit entry.
+- [ ] Negative-stock modes (`ALLOW` default / `PREVENT`); settings.
+- [ ] Owner-entered `unit_cost_satang` on customer returns (prefill from linked sale
+      COGS) and on positive adjustments; round-half-up helper in `packages/shared/money`.
+      **Verify:** §5.5 worked example; §23 mock dataset golden master (stock + variance +
+      status per SKU); voided rows excluded; closed-period write rejected; §14.2 A/B
+      concurrency test passes in both modes.
+
+## Phase 4 — Dashboard & master stock table
+- [ ] `GET /api/dashboard` — pre-aggregated KPI payload (§18.1).
+- [ ] Master table: columns per §19.1; search (SKU, name); filters (category, status,
+      low-stock, oversold); sortable; **server-side pagination**.
+- [ ] Status badges + oversold sub-line + Missing Balance.
+- [ ] Ledger view showing the running-balance calculation (§11).
+- [ ] Purchase / Sale drawers: live current stock, auto totals, backdate warning.
+- [ ] Customer Return drawer (required Unit Cost, prefilled from linked sale COGS) and
+      Adjust Stock drawer (Unit Cost required when delta > 0); dynamic 68/69 column
+      labels from `current_fiscal_year`.
+      **Verify:** dashboard numbers match a raw-SQL cross-check on the seed; pagination
+      ordering stable; filters correct against the mock dataset.
+
+## Phase 5 — Financial reporting
+- [ ] Weighted-average costing wired into every costed movement; `avg_cost_micro`.
+- [ ] `cogs_satang` computed + stored on sale post (round-half-up).
+- [ ] Cost-basis reset rule for `qty_on_hand ≤ 0`; `COST_BASIS_RESET` audit.
+- [ ] Void-purchase handling via ledger replay.
+- [ ] Fiscal-year rollover: `POST /api/fiscal-year/roll` — require all 12 periods CLOSED,
+      mandatory backup, advance `current_fiscal_year`, `ROLL_FISCAL_YEAR` audit; no
+      ledger data moved (§6.5).
+- [ ] Reports: monthly, low-stock, oversold — SQL-aggregated endpoints.
+- [ ] Recharts views for the reports.
+      **Verify:** §9.3 costing example; round-half-up test; gross-profit math;
+      reset-case test; void-purchase replay test; rollover advances labels + sums to the
+      new FY without changing any movement row.
+
+## Phase 6 — Excel / CSV
+- [ ] `POST /api/imports`: parse (SheetJS) → sanitize (`cleanData`) → validate →
+      duplicate-check → build preview; nothing written.
+- [ ] File hash + row hash; `import_batches`, `import_rows` tables.
+- [ ] Preview payload (§13.5) + UI table with invalid cells highlighted.
+- [ ] `POST /api/imports/:batchId/commit` — single transaction, `ALL_OR_NOTHING`
+      default, `PARTIAL` opt-in.
+- [ ] Invalid-rows `.xlsx` download with `_error` column.
+- [ ] Master Stock 68 re-import effect (§13.8).
+- [ ] Exports for every kind in §27 of the brief.
+      **Verify:** all §22.1 import cases; 10k-row happy path in one transaction;
+      forced-failure rollback leaves DB byte-identical; duplicate file + duplicate row
+      detected and not re-applied.
+
+## Phase 7 — Offline & sync
+- [ ] Dexie schema: read cache, outbound queue (fields per §12.2), UI prefs.
+- [ ] Optimistic offline create for purchase/sale/return/adjustment.
+- [ ] Sync engine: FIFO, one-at-a-time, idempotency key generated once + reused,
+      exponential backoff, conflict isolation.
+- [ ] `POST /api/sync` batch endpoint; `GET /api/sync/state`.
+- [ ] Conflict panel UI (retry / edit & retry / discard-with-audit).
+      **Verify:** queue FIFO test; retry with same key creates nothing; one conflict
+      isolates while the rest proceed; state-machine transitions covered.
+
+## Phase 8 — Backup & recovery
+- [ ] Backup pipeline (§16.3): `pg_dump` (custom format) → `manifest.json` (app/schema/pg
+      versions, per-table row counts, dump sha256) → compress → **encrypt locally**
+      (AES-256-GCM / age, backup passphrase) → sha256 of the artifact → verify
+      (re-read + test-decrypt + `pg_restore --list`).
+- [ ] `inventory-backup` CLI (callable with app UI closed).
+- [ ] Windows Task Scheduler task definition (`.xml`) for daily 02:00; app registers it
+      or the owner imports it (open Q #16); app startup catch-up check.
+- [ ] App detects + warns when the scheduled task is missing / overdue.
+- [ ] Retention (14 daily / 8 weekly / 12 monthly) that **never deletes the last copy**.
+- [ ] Three-state status model: `LOCAL_BACKUP_SUCCESS` / `CLOUD_UPLOAD_SUCCESS` /
+      `CLOUD_UPLOAD_FAILED`; persistent warning until a failed upload succeeds.
+- [ ] Optional S3-compatible cloud upload (open Q #15 for provider): PUT encrypted
+      artifact → verify (re-download / HEAD + checksum) → retry on failure. Never upload
+      plaintext.
+- [ ] Secrets stored separately: app PIN hash / backup passphrase / cloud credentials
+      (OS credential store / DPAPI), never in the DB, never logged.
+- [ ] Endpoints: `POST /api/backups`, `GET /api/backups`, `GET /api/backups/status`,
+      `POST /api/backups/:id/upload`, `DELETE /api/backups/:id` (block last copy),
+      `GET /api/backups/:id/download`; UI status card (§16.4).
+- [ ] Guarded restore: confirmation phrase, requires backup passphrase, pre-restore
+      auto-backup, sha256 check before decrypt, forward-migration on restore, audit
+      entry; refuse newer-schema backups.
+- [ ] `BACKUP_RECOVERY.md` runbook (incl. cloud + Task Scheduler setup) + DR drill
+      scripts for every brief-§33 scenario.
+      **Verify:** backup → drop/replace DB → restore → golden query matches; tampered
+      backup refused on sha256; cross-migration restore succeeds; newer-schema backup
+      refused; simulated cloud-upload failure surfaces + retries; retention keeps ≥ 1
+      copy; missing Task Scheduler task raises a warning.
+
+## Phase 9 — Production hardening
+- [ ] `scripts/stress-seed.ts` — 10k products, 100k movements.
+- [ ] Load + pagination profiling; add/adjust indexes per findings.
+- [ ] Concurrency stress (N parallel sales; no lost updates).
+- [ ] Import stress (large files, timeout behavior).
+- [ ] Full disaster-recovery drill end to end.
+- [ ] Security review: input handling, backup encryption, local auth, `npm audit`.
+- [ ] Performance report; fill `PROJECT_SPEC.md` §24 checklist.
+- [ ] Produce the §24.1 final verification report.
+      **Verify:** §21 scale targets met; §24 Definition of Done fully green.
