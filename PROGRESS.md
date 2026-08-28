@@ -7,10 +7,8 @@
 > "Implemented" alone never means "working" — it means code exists and type-checks.
 > Never record a level higher than the tests that were actually executed.
 
-**Last updated:** 2026-08-29 — `PROJECT_SPEC.md` v0.2 + all six First Task design docs
-written (`DATABASE.md`, `API.md`, `ARCHITECTURE.md`, `IMPORT_FORMAT.md`,
-`BACKUP_RECOVERY.md`, `TESTING.md`). No application code yet. Blocked on owner
-confirmation before Phase 1 (spec §25 step 10).
+**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phase 1 complete and
+verified.** Autonomous build of Phases 1–7 in progress; commit per phase.
 
 ---
 
@@ -32,9 +30,9 @@ confirmation before Phase 1 (spec §25 step 10).
 
 | Area | Spec ref | Level | Notes |
 | --- | --- | --- | --- |
-| Repo / workspaces / tooling | §3, §29, Phase 1 | Not started | |
-| PostgreSQL schema + migrations | §5–§20, DATABASE.md | Not started | DDL not yet drafted |
-| Error handling + logging | §17, Phase 1 | Not started | |
+| Repo / workspaces / tooling | §3, §29, Phase 1 | Integration tested | npm workspaces, TS strict, ESLint, CI; PGlite dev/test |
+| PostgreSQL schema + migrations | §5–§20, DATABASE.md | Integration tested | 0001 full schema + 0002 seed + 0003 periods; runner idempotent; CHECK/partial-unique verified on PGlite |
+| Error handling + logging | §17, Phase 1 | Integration tested | single Fastify error handler, typed codes, Thai msg + correlationId; pino w/ redaction |
 | `cleanData` — SKU | §7.1 | Not started | |
 | `cleanData` — numbers / satang / fractional qty | §7.2, §9.1 | Not started | |
 | `cleanData` — dates / Excel serial / Thai Buddhist year | §7.3 | Not started | |
@@ -114,4 +112,7 @@ confirmation before Phase 1 (spec §25 step 10).
 | Date | Session summary |
 | --- | --- |
 | 2026-08-29 | Created `PROJECT_SPEC.md` v0.1, `TASKS.md`, `PROGRESS.md`. Committed stack decisions (Postgres source of truth; integer-satang money; local-first single-owner web app). |
-| 2026-08-29 | `PROJECT_SPEC.md` → v0.2. Folded in owner answers to §26 #1,2,3,5,7,9,10,11: rolling fiscal year (§5.3, §6.5), owner-entered return/adjustment cost (§9.2, §10.3, §10.4), round-half-up, single location, local PIN + separate backup passphrase + separate cloud creds (§16.5), THB only, Windows Task Scheduler backup + encrypt-before-cloud + 3-state status + never-delete-last-copy (§16 rewritten). Updated `TASKS.md` (Phases 3/4/5/8) and this file. Open: §26.2 #4,6,8,12–16. Next: First Task design docs, then stop for confirmation. |
+| 2026-08-29 | `PROJECT_SPEC.md` → v0.2. Folded in owner answers to §26 #1,2,3,5,7,9,10,11: rolling fiscal year (§5.3, §6.5), owner-entered return/adjustment cost (§9.2, §10.3, §10.4), round-half-up, single location, local PIN + separate backup passphrase + separate cloud creds (§16.5), THB only, Windows Task Scheduler backup + encrypt-before-cloud + 3-state status + never-delete-last-copy (§16 rewritten). Updated `TASKS.md` (Phases 3/4/5/8) and this file. Open: §26.2 #4,6,8,12–16. |
+| 2026-08-29 | First Task design docs written (`DATABASE.md`, `API.md`, `ARCHITECTURE.md`, `IMPORT_FORMAT.md`, `BACKUP_RECOVERY.md`, `TESTING.md`). §26.2 #12 resolved (derived cutoff). |
+| 2026-08-29 | Env check: no Docker / no Postgres. Spec → v0.3: dev/test DB = PGlite (embedded PG16). Owner OK'd autonomous build of Phases 1–7. |
+| 2026-08-29 | **Phase 1 done** (commit 07c6fdf). Workspaces, PGlite client + Database interface, SQL migrations 0001–0003 + runner, Fastify + pino + error mapper, /api/health, web scaffold, CI. typecheck/lint/test green. Known limitation: true multi-client concurrency (spec §14.2) needs real Postgres. |

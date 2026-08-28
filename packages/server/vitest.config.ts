@@ -8,6 +8,7 @@ export default defineConfig({
     },
   },
   test: {
+    env: { NODE_ENV: 'test', LOG_LEVEL: 'silent', PGLITE_DATA_DIR: 'memory' },
     include: ['test/**/*.test.ts', 'src/**/*.test.ts'],
     // PGlite instances are per-test-file; run files in parallel but tests within a file serially.
     fileParallelism: true,

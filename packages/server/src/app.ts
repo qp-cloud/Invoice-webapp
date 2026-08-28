@@ -7,6 +7,8 @@ import { currentSchemaVersion } from './db/migrate.js';
 import { registerErrorHandler } from './errors/mapper.js';
 import { logger } from './logger.js';
 import { healthRoutes } from './routes/health.js';
+import { lookupRoutes } from './routes/lookups.js';
+import { productRoutes } from './routes/products.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -34,6 +36,8 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   registerErrorHandler(app);
 
   await app.register(healthRoutes, { prefix: '/api' });
+  await app.register(productRoutes, { prefix: '/api' });
+  await app.register(lookupRoutes, { prefix: '/api' });
 
   return app;
 }
