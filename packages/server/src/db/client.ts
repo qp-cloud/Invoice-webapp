@@ -51,9 +51,14 @@ export interface CreateDbOptions {
   dataDir?: string;
 }
 
+// Keep DATE (oid 1082) as a plain 'YYYY-MM-DD' string, not a JS Date — business dates
+// are handled as strings throughout (spec §7.3).
+const DATE_OID = 1082;
+const pgliteOptions = { parsers: { [DATE_OID]: (value: string) => value } };
+
 export function createDb(opts: CreateDbOptions = {}): Database {
   const dataDir = opts.dataDir ?? loadConfig().PGLITE_DATA_DIR;
-  const pg = dataDir === 'memory' ? new PGlite() : new PGlite(dataDir);
+  const pg = dataDir === 'memory' ? new PGlite(pgliteOptions) : new PGlite(dataDir, pgliteOptions);
   return wrap(pg);
 }
 

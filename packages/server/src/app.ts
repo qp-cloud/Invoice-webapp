@@ -8,7 +8,10 @@ import { registerErrorHandler } from './errors/mapper.js';
 import { logger } from './logger.js';
 import { healthRoutes } from './routes/health.js';
 import { lookupRoutes } from './routes/lookups.js';
+import { periodRoutes } from './routes/periods.js';
 import { productRoutes } from './routes/products.js';
+import { settingsRoutes } from './routes/settings.js';
+import { transactionRoutes } from './routes/transactions.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -38,6 +41,9 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(healthRoutes, { prefix: '/api' });
   await app.register(productRoutes, { prefix: '/api' });
   await app.register(lookupRoutes, { prefix: '/api' });
+  await app.register(transactionRoutes, { prefix: '/api' });
+  await app.register(periodRoutes, { prefix: '/api' });
+  await app.register(settingsRoutes, { prefix: '/api' });
 
   return app;
 }

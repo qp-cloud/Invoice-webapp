@@ -7,8 +7,9 @@
 > "Implemented" alone never means "working" — it means code exists and type-checks.
 > Never record a level higher than the tests that were actually executed.
 
-**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phase 1 complete and
-verified.** Autonomous build of Phases 1–7 in progress; commit per phase.
+**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phases 1–2 complete and
+verified** (commits 07c6fdf, 7269c20). 118 tests green. Autonomous build of Phases 1–7 in
+progress; commit per phase.
 
 ---
 
@@ -33,11 +34,13 @@ verified.** Autonomous build of Phases 1–7 in progress; commit per phase.
 | Repo / workspaces / tooling | §3, §29, Phase 1 | Integration tested | npm workspaces, TS strict, ESLint, CI; PGlite dev/test |
 | PostgreSQL schema + migrations | §5–§20, DATABASE.md | Integration tested | 0001 full schema + 0002 seed + 0003 periods; runner idempotent; CHECK/partial-unique verified on PGlite |
 | Error handling + logging | §17, Phase 1 | Integration tested | single Fastify error handler, typed codes, Thai msg + correlationId; pino w/ redaction |
-| `cleanData` — SKU | §7.1 | Not started | |
-| `cleanData` — numbers / satang / fractional qty | §7.2, §9.1 | Not started | |
-| `cleanData` — dates / Excel serial / Thai Buddhist year | §7.3 | Not started | |
-| Product master + SKU UNIQUE + UPSERT | §8 | Not started | |
-| Units / categories (conversion-ready model) | §8 (brief §8) | Not started | |
+| `cleanData` — SKU | §7.1 | Unit tested | cleanSku: trim/collapse/upper; SKU_REQUIRED |
+| `cleanData` — numbers / satang / fractional qty | §7.2, §9.1 | Unit tested | strip ฿/THB/บาท/commas/spaces, parens-neg, round-half-up; QUANTITY_PRECISION >3dp; 0.1+0.2 test |
+| `cleanData` — dates / Excel serial / Thai Buddhist year | §7.3 | Unit tested | serial @1899-12-30, DD/MM/YYYY, YYYY-MM-DD, DD-MM-YYYY, BE≥2400→−543, 2-digit warn |
+| Money (satang integers, micro-THB avg, round-half-up) | §9.1, §9.2 | Unit tested | branded Satang; §9.3 COGS golden (2,133,333) |
+| Product master + SKU UNIQUE + UPSERT | §8 | Integration tested | create/update/list; dup SKU any-case → 409; UPSERT no-dup |
+| Units / categories (conversion-ready model) | §8 (brief §8) | Integration tested | 12 seeded units; category delete blocked when in use |
+| Audit log (write path) | §20 | Integration tested | writeAudit; product CREATE/UPDATE rows asserted |
 | Movement ledger (`movements`, all 9 types) | §5 | Not started | |
 | `replayLedger` + golden master | §9.4, §23 | Not started | |
 | `stock_state` / `stock_cost_state` caches + reconciliation | §4, §21 | Not started | |
@@ -89,12 +92,16 @@ verified.** Autonomous build of Phases 1–7 in progress; commit per phase.
 
 | Suite | Tests | Passed | Failed | Level reached |
 | --- | --- | --- | --- | --- |
-| Sanitization | 0 | 0 | 0 | Not started |
+| Sanitization (shared) | 74 | 74 | 0 | Unit tested |
+| Money / format / domain (shared) | 25 | 25 | 0 | Unit tested |
+| Foundation + migrations + health (server) | 7 | 7 | 0 | Integration tested |
+| Product master + lookups (server) | 11 | 11 | 0 | Integration tested |
+| Web (scaffold + products page) | 1 | 1 | 0 | Component tested |
 | Inventory ledger | 0 | 0 | 0 | Not started |
 | Import | 0 | 0 | 0 | Not started |
 | Financial | 0 | 0 | 0 | Not started |
 | Concurrency | 0 | 0 | 0 | Not started |
-| Recovery | 0 | 0 | 0 | Not started |
+| Recovery | 0 | 0 | 0 | Not started (needs real Postgres) |
 | Offline / sync | 0 | 0 | 0 | Not started |
 
 ---
@@ -116,3 +123,4 @@ verified.** Autonomous build of Phases 1–7 in progress; commit per phase.
 | 2026-08-29 | First Task design docs written (`DATABASE.md`, `API.md`, `ARCHITECTURE.md`, `IMPORT_FORMAT.md`, `BACKUP_RECOVERY.md`, `TESTING.md`). §26.2 #12 resolved (derived cutoff). |
 | 2026-08-29 | Env check: no Docker / no Postgres. Spec → v0.3: dev/test DB = PGlite (embedded PG16). Owner OK'd autonomous build of Phases 1–7. |
 | 2026-08-29 | **Phase 1 done** (commit 07c6fdf). Workspaces, PGlite client + Database interface, SQL migrations 0001–0003 + runner, Fastify + pino + error mapper, /api/health, web scaffold, CI. typecheck/lint/test green. Known limitation: true multi-client concurrency (spec §14.2) needs real Postgres. |
+| 2026-08-29 | **Phase 2 done** (commit 7269c20). shared: cleanData (sku/number/date) + money (satang/micro) + format + domain + zod schemas, 99 unit tests. server: product master CRUD + SKU UNIQUE + UPSERT + categories + units + audit, 18 integration tests. web: minimal products page. Fixed decimal.js import (named `{ Decimal }`, not default) under verbatimModuleSyntax. |
