@@ -10,9 +10,11 @@ export default defineConfig({
   test: {
     env: { NODE_ENV: 'test', LOG_LEVEL: 'silent', PGLITE_DATA_DIR: 'memory' },
     include: ['test/**/*.test.ts', 'src/**/*.test.ts'],
-    // PGlite instances are per-test-file; run files in parallel but tests within a file serially.
+    globalSetup: ['./test/globalSetup.ts'],
+    // PGlite instances are per-test-file. Under TEST_PG=1 one real Postgres backs the
+    // whole run with a fresh database per file.
     fileParallelism: true,
-    hookTimeout: 30_000,
-    testTimeout: 30_000,
+    hookTimeout: 60_000,
+    testTimeout: 60_000,
   },
 });

@@ -11,9 +11,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/scripts/seed.ts",
+    "seed:stress": "tsx src/scripts/stress-seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:stress": "vitest run --dir test/stress"
+    "test:pg": "TEST_PG=1 vitest run"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.15",
@@ -22,6 +23,7 @@
     "@inventory/shared": "*",
     "drizzle-orm": "^0.38.2",
     "fastify": "^5.2.0",
+    "pg": "^8.23.0",
     "pino": "^9.5.0",
     "uuid": "^11.0.3",
     "xlsx": "^0.18.5",
@@ -29,6 +31,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@types/pg": "^8.23.1",
+    "embedded-postgres": "^17.10.0-beta.17",
     "form-data": "^4.0.1",
     "pino-pretty": "^13.0.0",
     "tsx": "^4.19.2",

@@ -1,6 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { loadConfig } from '../config.js';
 import { logger } from '../logger.js';
+import { createPgDatabase } from './pg.js';
 
 /**
  * Minimal query surface the services code against. PGlite satisfies it directly;
@@ -68,9 +69,11 @@ export function getDb(): Database {
   if (!singleton) {
     const cfg = loadConfig();
     if (cfg.DATABASE_URL) {
-      logger.warn('DATABASE_URL is set but the pg adapter is not wired yet; using PGlite.');
+      singleton = createPgDatabase({ connectionString: cfg.DATABASE_URL });
+      logger.info('using PostgreSQL via DATABASE_URL');
+    } else {
+      singleton = createDb();
     }
-    singleton = createDb();
   }
   return singleton;
 }

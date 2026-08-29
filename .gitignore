@@ -14,3 +14,6 @@ pglite-data/
 backups/
 playwright-report/
 test-results/
+
+# embedded-postgres test harness
+packages/server/test/.pg-url

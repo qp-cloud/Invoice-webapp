@@ -3,17 +3,18 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import type { Database } from '../src/db/client.js';
-import { makeTestDb } from './helpers/testDb.js';
+import { makeTestDb, usingRealPostgres } from './helpers/testDb.js';
 
 /**
- * Spec §14.2 concurrency scenarios. PGlite is single-connection so these exercise the
- * SERIALIZED path and the guard/idempotency logic; the genuine multi-client
- * "no lost update" assertion is deferred to a real Postgres run (TESTING.md §3.5,
- * spec Change Log v0.3).
+ * Spec §14.2 concurrency scenarios. Under the default PGlite backend these exercise the
+ * guard + idempotency logic on a single connection; with `TEST_PG=1` the same assertions
+ * run against a real embedded PostgreSQL with a connection pool, so the "no lost update"
+ * and parallel-idempotency claims are verified with genuine multi-client contention
+ * (this is how the idempotency advisory-lock fix was found).
  */
 const TODAY = new Date().toISOString().slice(0, 10);
 
-describe('concurrency (serialized under PGlite)', () => {
+describe(`concurrency (${usingRealPostgres() ? 'real Postgres, parallel clients' : 'PGlite, single connection'})`, () => {
   let app: FastifyInstance;
   let db: Database;
 
