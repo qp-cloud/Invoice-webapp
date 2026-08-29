@@ -7,10 +7,10 @@
 > "Implemented" alone never means "working" — it means code exists and type-checks.
 > Never record a level higher than the tests that were actually executed.
 
-**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phases 1–5 complete**
-(commits 07c6fdf, 7269c20, 92a5d09, 0556cfc, 0ce3265 + Phase 5). 151 tests green
-(shared 105, server 45, web 1). Phase 4/5 UI not verified in a real browser (no display
-in this env). Autonomous build of Phases 1–7 in progress; commit per phase.
+**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phases 1–6 complete**
+(commits 07c6fdf, 7269c20, 92a5d09, 0556cfc, 0ce3265, 76d0ae7 + Phase 6). 159 tests
+green (shared 105, server 53, web 1). Phase 4/5/6 UI not verified in a real browser (no
+display in this env). Autonomous build of Phases 1–7 in progress; commit per phase.
 
 ---
 
@@ -66,11 +66,11 @@ in this env). Autonomous build of Phases 1–7 in progress; commit per phase.
 | Master stock table (search / filter / sort / paginate) | §19 | Integration tested (API) + UI implemented | `GET /api/products` + per-row `fyView` + dynamic labels; `StockPage` search / status+category filters / low+oversold toggles / sortable headers / server pagination / row action buttons. UI not browser-verified |
 | Transaction UI drawers (Purchase / Sale / Return / Adjust) | §19.3 | Implemented (UI unverified) | `TransactionDrawer`: live current stock, auto totals, backdate warning + reason, projected balance, oversell warning. Return prefill-from-sale-COGS still deferred (needs sale-lookup endpoint) |
 | Monthly / low-stock / oversold reports + charts | §21 (brief), §9.5 | Integration tested (API) + UI implemented | `GET /api/reports/monthly?ym=` + `/low-stock` + `/oversold` SQL-aggregated (`services/reports.ts`); `ReportsPage` bar chart + monthly table + two lists. UI not browser-verified |
-| Excel/CSV import pipeline (parse→sanitize→validate→preview→commit) | §13 | Not started | |
-| Import atomicity (all-or-nothing) + partial opt-in | §13.3, §13.4 | Not started | |
-| Import idempotency (file hash / row hash) | §15 | Not started | |
-| Invalid-row export | §13.6 | Not started | |
-| Exports (all report kinds) | §14.3, brief §27 | Not started | |
+| Excel/CSV import pipeline (parse→sanitize→validate→preview→commit) | §13 | Integration tested | `services/import/*` (headers/parse/sanitize/hash/pipeline/commit); `POST /api/imports` multipart preview, `GET /imports/:id`, `/commit`, `/discard`. 8 tests |
+| Import atomicity (all-or-nothing) + partial opt-in | §13.3, §13.4 | Integration tested | one tx via `runIdempotent`; ALL_OR_NOTHING any-SKIP → 422 nothing written; PARTIAL commits valid + lists skipped. Mid-write rollback fault-injection deferred to Phase 9; 10k-row target deferred to Phase 9 stress |
+| Import idempotency (file hash / row hash) | §15 | Integration tested | file sha256 → `fileAlreadyImported` + `IMPORT_FILE_ALREADY_IMPORTED` w/o ack; row sha256 → `ROW_ALREADY_IMPORTED` / `DUPLICATE`, never re-applied |
+| Invalid-row export | §13.6 | Integration tested | `GET /imports/:id/invalid-rows.xlsx` — source layout + trailing `_error` column |
+| Exports (all report kinds) | §14.3, brief §27 | Integration tested | `GET /api/exports/:kind.xlsx` — current-stock / ledger / purchases / sales / monthly-report / low-stock / oversold |
 | Idempotency middleware (`processed_requests`) | §14.1 | Integration tested | `runIdempotent` atomic (work + processed_requests in one tx); replay `_replayed:true`; different body → 422; doc tables carry `idempotency_key UNIQUE` |
 | Concurrency safety (per-product lock, no lost updates) | §14.2 | Integration tested (serialized) | `pg_advisory_xact_lock` + `SELECT … FOR UPDATE`; A/B 80/50 ALLOW + PREVENT + parallel-idempotency pass under PGlite. **Genuine multi-client "no lost update" deferred to real Postgres** |
 | Offline cache + outbound queue (Dexie) | §12.2 | Not started | |
@@ -104,8 +104,8 @@ in this env). Autonomous build of Phases 1–7 in progress; commit per phase.
 | Financial reports — monthly / low-stock / oversold (server) | 4 | 4 | 0 | Integration tested (raw-SQL cross-check) |
 | Fiscal-year rollover (server) | 4 | 4 | 0 | Integration tested |
 | Financial — void-purchase replay + cost-basis reset (server) | 2 | 2 | 0 | Integration tested |
-| Web (shell + dashboard + master table + reports nav) | 1 | 1 | 0 | Component tested (drawers + charts not browser-verified) |
-| Import | 0 | 0 | 0 | Not started |
+| Excel/CSV import + exports (server) | 8 | 8 | 0 | Integration tested |
+| Web (shell + dashboard + master table + reports + import nav) | 1 | 1 | 0 | Component tested (drawers + charts + import UI not browser-verified) |
 | Recovery | 0 | 0 | 0 | Not started (needs real Postgres) |
 | Offline / sync | 0 | 0 | 0 | Not started |
 
@@ -123,10 +123,16 @@ in this env). Autonomous build of Phases 1–7 in progress; commit per phase.
   edit-product drawer, reports page + Recharts) is **built and typechecks + `vite build`
   succeeds + a render smoke test passes, but has not been run in a real browser** — no
   display in this environment. Golden-path + edge-case click-through still owed.
-- Web bundle is ~633 kB (recharts is heavy); acceptable for a local single-owner app,
+- Web bundle is ~640 kB (recharts is heavy); acceptable for a local single-owner app,
   revisit with code-splitting in Phase 9 if needed.
-- `npm audit`: pre-existing high/critical advisories in `esbuild` (vite dev server) and
-  `drizzle-orm` (<0.45.2, not yet used for queries). Defer to the Phase 9 security review.
+- `npm audit`: `esbuild` (vite dev server), `drizzle-orm` (<0.45.2, not yet used for
+  queries), and `xlsx` 0.18.5 (prototype-pollution / ReDoS advisories — the registry
+  build; SheetJS's fix is only on their CDN, unreachable here). `xlsx` parses only
+  owner-supplied files server-side. Revisit all three in the Phase 9 security review.
+- Import: the 10,000-row single-transaction target (§13.3) is **not** exercised — tests
+  use small sheets because PGlite is slow; moved to the Phase 9 stress pass. A genuine
+  mid-write rollback test needs deliberate fault injection; the pre-write 422 path
+  already proves "invalid file writes nothing".
 - Customer-return **Unit Cost prefill from the linked sale's COGS** (spec §19.3) still not
   wired — needs a sale-lookup endpoint.
 - Offline `PREVENT` overselling is enforceable only at sync time (design constraint,
@@ -146,4 +152,5 @@ in this env). Autonomous build of Phases 1–7 in progress; commit per phase.
 | 2026-08-29 | **Phase 2 done** (commit 7269c20). shared: cleanData (sku/number/date) + money (satang/micro) + format + domain + zod schemas, 99 unit tests. server: product master CRUD + SKU UNIQUE + UPSERT + categories + units + audit, 18 integration tests. web: minimal products page. Fixed decimal.js import (named `{ Decimal }`, not default) under verbatimModuleSyntax. |
 | 2026-08-29 | **Phase 3 done** (commit 92a5d09). shared: `replayLedger` split into pure `costStep`; transaction zod schemas. server: `services/ledger` (postMovementTx single write path, recomputeStockState, voidDocumentTx, getLedger, currentFyView), `services/documents` (createPurchase/Sale/Return/Adjustment/Opening + voidDocument, all via `runIdempotent`), `services/idempotency` (atomic work + processed_requests), `services/periods` / `services/settings` (+ route) / `services/backdate`, `db/lock` (advisory xact lock), PGlite date-OID parser. Routes: transactions / periods / settings + products ledger & stock. Tests: ledger 10, concurrency 3 (serialized under PGlite, multi-client deferred). 137 green total. Docs recorded in commit 0556cfc. |
 | 2026-08-29 | **Phase 4 done** (commit 0ce3265). server: `services/dashboard` + `GET /api/dashboard` (§18.1, SQL-aggregated); `listProducts` extended with per-row `fyView` (68/69 + variance via LATERAL) and dynamic `labels`. web: rebuilt shell (`App` nav dashboard/stock), `DashboardPage` (10 KPI cards), `StockPage` (search / status+category filter / low+oversold toggle / sortable headers / server pagination / row actions), `Drawer` + `TransactionDrawer` (purchase/sale/return/adjust: live stock, auto totals, backdate warning, oversell warning) + `LedgerDrawer` + `EditProductDrawer`; `api.postTxn` sends a fresh Idempotency-Key; `lib/fmt` wraps shared formatters. Tests: dashboard 4 (raw-SQL cross-check + fyView + filters), web smoke updated. 141 green. UI not browser-verified (no display). |
+| 2026-08-29 | **Phase 6 done.** server: `@fastify/multipart` + `xlsx`; `services/import/` (headers alias resolver, workbook parse, per-row `cleanData` sanitize, file+row sha256, `pipeline.createImport` preview, `commit.commitImport` one-tx idempotent apply with §13.8 Master Stock re-import effect); routes `POST /imports` (multipart) / `GET /imports/:id` / `/commit` / `/discard` / `/invalid-rows.xlsx`; `services/exports` + `GET /api/exports/:kind.xlsx` (7 kinds). web: `ImportPage` (preview table + mode radios + dup-file ack + result + export buttons) + nav tab. Tests: `import.test.ts` 8. 159 green. UI not browser-verified. Deferred: 10k-row stress + mid-write rollback fault injection → Phase 9. |
 | 2026-08-29 | **Phase 5 done.** server: `services/fiscalYear` + `POST /api/fiscal-year/roll` (confirm + all-12-CLOSED + backup guard + advance + open new periods + `ROLL_FISCAL_YEAR` audit, no movement rows touched); Stock 68 reworked to a derived ledger cutoff (`type='OPENING' OR occurred_on < CFY start`) in `currentFyView` / dashboard / `listProducts` so a rollover yields the prior-year close with no snapshot; `services/reports` + `GET /api/reports/monthly?ym=` / `/low-stock` / `/oversold` (SQL-aggregated, margin divide-by-zero guarded). web: `ReportsPage` (recharts bar chart + monthly table w/ totals footer + low-stock + oversold lists + month picker) + "รายงาน" nav tab; added `recharts` dep. Tests: `fiscalYear` 4, `reports` 4, `financial` 2 (void-purchase replay + cost-basis reset). 151 green. `vite build` OK. UI not browser-verified. |

@@ -44,6 +44,19 @@ async function request<T>(
   return json as T;
 }
 
+async function requestForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`/api${path}`, { method: 'POST', body: form });
+  const json = (await res.json()) as unknown;
+  if (!res.ok) {
+    const err = (json as { error?: ApiError }).error;
+    throw new ApiRequestError(
+      res.status,
+      err ?? { code: 'INTERNAL', message: 'unknown error', correlationId: '' },
+    );
+  }
+  return json as T;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body: unknown) => request<T>('POST', path, body),
@@ -52,4 +65,12 @@ export const api = {
   /** POST a transaction with a fresh Idempotency-Key (spec §14.1). */
   postTxn: <T>(path: string, body: unknown) =>
     request<T>('POST', path, body, { 'idempotency-key': crypto.randomUUID() }),
+  /** POST an import commit with a fresh Idempotency-Key. */
+  commitImport: <T>(path: string, body: unknown) =>
+    request<T>('POST', path, body, { 'idempotency-key': crypto.randomUUID() }),
+  postForm: requestForm,
 };
+
+/** Absolute URL for a streamed .xlsx download (opened in a new tab). */
+export const exportUrl = (kind: string, query = ''): string =>
+  `/api/exports/${kind}.xlsx${query}`;

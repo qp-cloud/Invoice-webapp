@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { DashboardPage } from './pages/DashboardPage.js';
+import { ImportPage } from './pages/ImportPage.js';
 import { ReportsPage } from './pages/ReportsPage.js';
 import { StockPage } from './pages/StockPage.js';
 
-type View = 'dashboard' | 'stock' | 'reports';
+type View = 'dashboard' | 'stock' | 'reports' | 'import';
 
 export function App(): JSX.Element {
   const [view, setView] = useState<View>('dashboard');
@@ -21,10 +22,14 @@ export function App(): JSX.Element {
         <NavButton active={view === 'reports'} onClick={() => setView('reports')}>
           รายงาน
         </NavButton>
+        <NavButton active={view === 'import'} onClick={() => setView('import')}>
+          นำเข้า/ส่งออก
+        </NavButton>
       </nav>
       {view === 'dashboard' && <DashboardPage />}
       {view === 'stock' && <StockPage />}
       {view === 'reports' && <ReportsPage />}
+      {view === 'import' && <ImportPage />}
     </div>
   );
 }
