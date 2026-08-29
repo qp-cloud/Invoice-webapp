@@ -167,7 +167,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done (add date)
       deliberate fault injection (the pre-write 422 path already proves "nothing
       written"). UI not browser-verified.
 
-## Phase 7 — Offline & sync ✅ 2026-08-29 (commit __PENDING7__)
+## Phase 7 — Offline & sync ✅ 2026-08-29 (commit 1da676d)
 - [x] Dexie schema (`web/src/offline/db.ts`): `queue` store with every §12.2 field
       (localId / serverId / idempotencyKey / syncStatus / retryCount / createdAt /
       syncedAt / payload / error) + a `prefs` kv store. `hasStorage()` guard so
