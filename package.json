@@ -12,11 +12,12 @@
   },
   "scripts": {
     "build": "npm run build -w @inventory/shared && npm run build -w @inventory/server && npm run build -w @inventory/web",
+    "start": "node packages/server/dist/index.js",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "test": "npm run test -w @inventory/shared && npm run test -w @inventory/server && npm run test -w @inventory/web",
     "test:e2e": "npm run test:e2e -w @inventory/web",
-    "test:stress": "npm run test:stress -w @inventory/server",
+    "test:pg": "npm run test:pg -w @inventory/server",
     "dev": "npm run dev -w @inventory/server & npm run dev -w @inventory/web",
     "migrate": "npm run migrate -w @inventory/server",
     "seed": "npm run seed -w @inventory/server"

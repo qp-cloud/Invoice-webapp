@@ -46,7 +46,8 @@ beforeEach(() => {
     'fetch',
     vi.fn(async (url: string) => {
       let body: unknown = {};
-      if (url.includes('/dashboard')) body = dashboard;
+      if (url.includes('/auth/status')) body = { authRequired: false, unlocked: true };
+      else if (url.includes('/dashboard')) body = dashboard;
       else if (url.includes('/products')) body = productsPage;
       else if (url.includes('/units')) body = [{ code: 'piece', nameTh: 'ชิ้น' }];
       else if (url.includes('/categories')) body = [];

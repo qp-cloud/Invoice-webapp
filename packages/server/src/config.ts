@@ -26,6 +26,15 @@ const schema = z.object({
    * in the DB and is redacted from logs (spec §16.5). Min length enforced at use.
    */
   BACKUP_PASSPHRASE: z.string().optional(),
+  /**
+   * Owner unlock PIN (spec §16.5). If set, every `/api` route except health + auth
+   * requires an unlock cookie. Unset = open (local single-user default).
+   */
+  APP_PIN: z.string().optional(),
+  /** Optional stable secret for the unlock cookie HMAC; defaults to the PIN hash. */
+  APP_SESSION_SECRET: z.string().optional(),
+  /** If set, the server also serves the built web app (SPA) from this directory. */
+  WEB_DIST_DIR: z.string().optional(),
 });
 
 export type Config = z.infer<typeof schema>;

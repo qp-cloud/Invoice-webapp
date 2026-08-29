@@ -17,3 +17,9 @@ test-results/
 
 # embedded-postgres test harness
 packages/server/test/.pg-url
+
+# runtime data / artifacts (never commit)
+packages/server/data/
+packages/server/backups/
+packages/server/pglite-data/
+.env

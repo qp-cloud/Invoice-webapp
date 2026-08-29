@@ -1,12 +1,19 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import { AppError } from '@inventory/shared';
+import { loadConfig } from './config.js';
 import type { Database } from './db/client.js';
 import { getDb } from './db/client.js';
 import { currentSchemaVersion } from './db/migrate.js';
 import { registerErrorHandler } from './errors/mapper.js';
 import { logger } from './logger.js';
+import { authRequired, isUnlocked, SESSION_COOKIE } from './services/auth.js';
+import { authRoutes } from './routes/auth.js';
 import { backupRoutes } from './routes/backups.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { exportRoutes } from './routes/exports.js';
@@ -44,10 +51,25 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   app.decorate('db', opts.db ?? getDb());
   app.decorate('schemaVersion', await currentSchemaVersion(app.db));
 
+  const distDir = loadConfig().WEB_DIST_DIR;
+  const serveWeb = Boolean(distDir && existsSync(join(distDir, 'index.html')));
+
   await app.register(cookie);
   await app.register(multipart, { limits: { fileSize: 64 * 1024 * 1024 } });
-  registerErrorHandler(app);
+  registerErrorHandler(app, { notFound: !serveWeb });
 
+  // Owner unlock gate (spec §16.5). No-op unless a PIN is configured.
+  const OPEN_PATHS = new Set(['/api/health', '/api/auth/status', '/api/auth/unlock', '/api/auth/set-pin']);
+  app.addHook('onRequest', async (req) => {
+    if (!req.url.startsWith('/api/')) return; // SPA assets handled below
+    const path = req.url.split('?')[0] ?? req.url;
+    if (OPEN_PATHS.has(path)) return;
+    if (!(await authRequired(app.db))) return;
+    if (await isUnlocked(app.db, req.cookies[SESSION_COOKIE])) return;
+    throw new AppError('UNAUTHENTICATED');
+  });
+
+  await app.register(authRoutes, { prefix: '/api' });
   await app.register(healthRoutes, { prefix: '/api' });
   await app.register(dashboardRoutes, { prefix: '/api' });
   await app.register(productRoutes, { prefix: '/api' });
@@ -62,6 +84,20 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(syncRoutes, { prefix: '/api' });
   await app.register(backupRoutes, { prefix: '/api' });
   await app.register(settingsRoutes, { prefix: '/api' });
+
+  // Serve the built web app + SPA fallback when WEB_DIST_DIR points at a real dist.
+  if (serveWeb && distDir) {
+    await app.register(fastifyStatic, { root: distDir, wildcard: false });
+    app.setNotFoundHandler((req, reply) => {
+      if (req.url.startsWith('/api/')) {
+        return reply.status(404).send({
+          error: { code: 'NOT_FOUND', message: 'ไม่พบข้อมูล', correlationId: req.id },
+        });
+      }
+      return reply.sendFile('index.html');
+    });
+    logger.info({ distDir }, 'serving web app');
+  }
 
   return app;
 }

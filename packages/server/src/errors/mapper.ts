@@ -25,7 +25,7 @@ function wire(
  * Nothing fails silently; technical detail goes to the log, the user gets a Thai
  * message + a correlation id.
  */
-export function registerErrorHandler(app: FastifyInstance): void {
+export function registerErrorHandler(app: FastifyInstance, opts: { notFound?: boolean } = {}): void {
   app.setErrorHandler((err: unknown, req: FastifyRequest, reply: FastifyReply) => {
     const correlationId = req.id;
 
@@ -59,7 +59,9 @@ export function registerErrorHandler(app: FastifyInstance): void {
       .send(wire('INTERNAL', 'เกิดข้อผิดพลาดภายในระบบ', correlationId));
   });
 
-  app.setNotFoundHandler((req, reply) => {
-    reply.status(404).send(wire('NOT_FOUND', 'ไม่พบเส้นทางที่ร้องขอ', req.id));
-  });
+  if (opts.notFound !== false) {
+    app.setNotFoundHandler((req, reply) => {
+      reply.status(404).send(wire('NOT_FOUND', 'ไม่พบเส้นทางที่ร้องขอ', req.id));
+    });
+  }
 }

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { api } from './api/client.js';
 import { useOffline } from './offline/store.js';
 import { BackupPage } from './pages/BackupPage.js';
 import { DashboardPage } from './pages/DashboardPage.js';
@@ -6,16 +7,37 @@ import { ImportPage } from './pages/ImportPage.js';
 import { ReportsPage } from './pages/ReportsPage.js';
 import { StockPage } from './pages/StockPage.js';
 import { SyncPage } from './pages/SyncPage.js';
+import { UnlockScreen } from './pages/UnlockScreen.js';
 
 type View = 'dashboard' | 'stock' | 'reports' | 'import' | 'sync' | 'backup';
 
 export function App(): JSX.Element {
   const [view, setView] = useState<View>('dashboard');
+  const [locked, setLocked] = useState<boolean | null>(null);
   const { online, pendingCount, conflictCount, refresh } = useOffline();
 
+  const checkAuth = useCallback(async () => {
+    try {
+      const s = await api.get<{ authRequired: boolean; unlocked: boolean }>('/auth/status');
+      setLocked(s.authRequired && !s.unlocked);
+    } catch {
+      setLocked(false);
+    }
+  }, []);
+
   useEffect(() => {
-    void refresh();
-  }, [refresh, view]);
+    void checkAuth();
+    const onLocked = (): void => setLocked(true);
+    window.addEventListener('inv:locked', onLocked);
+    return () => window.removeEventListener('inv:locked', onLocked);
+  }, [checkAuth]);
+
+  useEffect(() => {
+    if (locked === false) void refresh();
+  }, [refresh, view, locked]);
+
+  if (locked === null) return <div className="p-8 text-slate-400">…</div>;
+  if (locked) return <UnlockScreen onUnlocked={() => setLocked(false)} />;
 
   const queued = pendingCount + conflictCount;
 

@@ -35,6 +35,9 @@ async function request<T>(
   const json = (await res.json()) as unknown;
   if (!res.ok) {
     const err = (json as { error?: ApiError }).error;
+    if (res.status === 401 && !path.startsWith('/auth/')) {
+      window.dispatchEvent(new CustomEvent('inv:locked'));
+    }
     throw new ApiRequestError(res.status, err ?? {
       code: 'INTERNAL',
       message: 'unknown error',
