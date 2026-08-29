@@ -159,9 +159,12 @@ export async function postMovementTx(
   };
 }
 
-/** Rebuild stock_state for one product from its ACTIVE ledger (spec §9.4). */
-export async function recomputeStockState(tx: Queryable, productId: string): Promise<CostState> {
-  const { rows } = await tx.query<{
+/** Replay a product's ACTIVE ledger without writing (spec §9.4). Used by reconciliation. */
+export async function replayProductState(
+  db: Queryable,
+  productId: string,
+): Promise<{ state: CostState; maxSeq: number }> {
+  const { rows } = await db.query<{
     type: MovementType;
     quantity: string;
     unit_cost_satang: string | null;
@@ -177,18 +180,18 @@ export async function recomputeStockState(tx: Queryable, productId: string): Pro
     unitCostSatang: r.unit_cost_satang != null ? Number(r.unit_cost_satang) : null,
     status: r.status,
   }));
-  const result = replayLedger(movements);
-  const maxSeqRes = await tx.query<{ s: string | null }>(
+  const maxSeqRes = await db.query<{ s: string | null }>(
     'SELECT max(seq)::text AS s FROM movements WHERE product_id = $1',
     [productId],
   );
-  await writeCostState(
-    tx,
-    productId,
-    result,
-    Number(maxSeqRes.rows[0]?.s ?? 0),
-  );
-  return result;
+  return { state: replayLedger(movements), maxSeq: Number(maxSeqRes.rows[0]?.s ?? 0) };
+}
+
+/** Rebuild stock_state for one product from its ACTIVE ledger (spec §9.4). */
+export async function recomputeStockState(tx: Queryable, productId: string): Promise<CostState> {
+  const { state, maxSeq } = await replayProductState(tx, productId);
+  await writeCostState(tx, productId, state, maxSeq);
+  return state;
 }
 
 const DOC_TABLE = {

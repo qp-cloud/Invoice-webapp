@@ -10,6 +10,8 @@ export interface QueueItem {
   endpoint: string;
   syncStatus: SyncStatus;
   retryCount: number;
+  /** Strictly increasing insertion ordinal for a stable FIFO flush order. */
+  ord: number;
   createdAt: string;
   syncedAt: string | null;
   payload: unknown;
@@ -23,7 +25,7 @@ class OfflineDb extends Dexie {
   constructor() {
     super('inventory-offline');
     this.version(1).stores({
-      queue: 'localId, syncStatus, createdAt',
+      queue: 'localId, syncStatus, ord',
       prefs: 'key',
     });
   }

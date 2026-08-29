@@ -7,11 +7,12 @@
 > "Implemented" alone never means "working" — it means code exists and type-checks.
 > Never record a level higher than the tests that were actually executed.
 
-**Last updated:** 2026-08-29 — Spec v0.3. **Phases 1–8 complete** (P8: local logical
-backup only — cloud + Task Scheduler deferred, open Q #15/#16). A real PostgreSQL 17
-backend is now available for tests via `embedded-postgres` (`npm run test:pg`). 176
-tests green (shared 105, server 66, web 5); the 66 server tests also pass under
-`TEST_PG=1` against real Postgres. Phase 4–8 UI not browser-verified. Phase 9 remains.
+**Last updated:** 2026-08-30 — Spec v0.3. **Phases 1–9 built** (P8 local logical backup
+only; P9 partial — no auth layer, no real load-profiling, DR = the backup/restore test).
+Real PostgreSQL 17 backend for tests via `embedded-postgres` (`npm run test:pg`). **180
+tests green** (shared 105, server 70, web 5) on PGlite; **182** on real Postgres (+2 scale
+/ concurrency stress). See the §24.1 verification report below. All Phase 4–9 UI is
+typechecked + `vite build`-clean + smoke-tested but **not browser-verified** (no display).
 
 ---
 
@@ -45,7 +46,7 @@ tests green (shared 105, server 66, web 5); the 66 server tests also pass under
 | Audit log (write path) | §20 | Integration tested | writeAudit; product CREATE/UPDATE rows asserted |
 | Movement ledger (`movements`, all 9 types) | §5 | Integration tested | signed qty CHECK, one-active-OPENING partial-unique, seq identity; postMovementTx single write path |
 | `replayLedger` + golden master | §9.4, §23 | Unit tested | pure `costStep`/`replayLedger`; §9.3 / §11 / §23 golden asserted |
-| `stock_state` / `stock_cost_state` caches + reconciliation | §4, §21 | Integration tested | merged `stock_state` (qty + cost cols) updated in same tx; `recomputeStockState` full replay; recon job Phase 9 |
+| `stock_state` caches + reconciliation | §4, §21 | Integration tested | merged `stock_state` updated in-tx; `reconcile()` + `POST /api/reconcile` replay-vs-cache, report drift, optional auto-heal; `reconcile.test.ts` |
 | Stock formulas (full + 68/69) + variance | §5.2–§5.4 | Integration tested | `currentFyView` (stock68 / purchasesCfy / salesCfy / variance) |
 | Rolling fiscal year + rollover action | §5.3, §6.5 | Integration tested | `POST /api/fiscal-year/roll` (`services/fiscalYear.ts`): confirm + all-12-CLOSED (`FY_PERIODS_OPEN`) + backup guard (`BACKUP_REQUIRED`, real wiring Phase 8) + advance + open new periods + `ROLL_FISCAL_YEAR` audit + no movement rows touched. Stock 68 now a derived ledger cutoff so a rollover yields prior-year close with no snapshot |
 | Negative-stock modes (ALLOW / PREVENT) | §6.1 | Integration tested | ALLOW warns + oversold + missingBalance; PREVENT → 422, nothing written |
@@ -83,11 +84,11 @@ tests green (shared 105, server 66, web 5); the 66 server tests also pass under
 | Cloud upload (S3-compatible, verify + retry, 3-state status) | §16.3, §16.4 | Not started | provider TBD (open Q #15); `cloud_status` column stays `NOT_ATTEMPTED` |
 | Secrets separation (PIN / passphrase / cloud creds) | §16.5 | Partial | passphrase from request / `BACKUP_PASSPHRASE` env, never in DB, redacted in logs. OS credential store / DPAPI = deployment packaging |
 | Restore (guarded / passphrase / pre-restore backup / cross-migration) | §16.7 | Integration tested (both backends) | `restoreBackup`: confirm phrase + `BAD_PASSPHRASE` + `BACKUP_INTEGRITY_FAILED` + `SCHEMA_NEWER_THAN_APP` + PRE_RESTORE auto-backup + one-tx swap + `_migrations` top-up + `RESTORE` audit |
-| Disaster-recovery runbook + drills | §16, brief §33 | Not started | `BACKUP_RECOVERY.md` still describes the `pg_dump` design; needs a rewrite for the logical-dump format |
+| Disaster-recovery runbook + drills | §16, brief §33 | Partial | backup→wipe→restore golden-query drill in `backup.test.ts` (both backends); scripted multi-scenario drill + `BACKUP_RECOVERY.md` rewrite still owed |
 | Database constraints (UNIQUE / CHECK ≥ 0 / FK) | §14, brief §34 | Integration tested (real Postgres) | full schema now also verified on real PG17 via `TEST_PG=1` — CHECK / partial-unique / FK / GENERATED IDENTITY all enforced |
-| Performance / scale (10k products, 100k movements) | §21 | Not started | Phase 9 — stress seed + profiling on embedded PG |
+| Performance / scale (10k products, 100k movements) | §21 | Stress tested (partial) | `scripts/stress-seed.ts` + `stress.test.ts` (2k/20k ~0.6s reconcile-clean, pagination stable). Full-scale load profiling + index tuning not done |
 | UI/UX (Thai-first, number/date formatting, responsive) | §19.4 | Not started | |
-| Stress / corruption / concurrency / recovery hardening | Phase 9 | Not started | |
+| Stress / concurrency / recovery hardening | Phase 9 | Stress tested (real PG) | 25 parallel sales exact + reconcile-clean; idempotency race found + fixed; backup/restore recovery. No auth layer; no fault-injection corruption tests |
 
 ---
 
@@ -160,6 +161,88 @@ tests green (shared 105, server 66, web 5); the 66 server tests also pass under
 
 ---
 
+## §24.1 Final verification report
+
+```
+Tests Run:      182 (shared 105, server 72, web 5) — server suite on real PostgreSQL 17
+Tests Passed:   182
+Tests Failed:   0
+                (default `npm test` runs 180: server stress suite skips without TEST_PG=1)
+
+Coverage by area
+  Implemented / Unit / Integration / E2E / Stress / Recovery / Not verified
+
+  cleanData sanitization ................. Unit (74 cases, spec §22.1)
+  Money (satang / micro / round-half-up) . Unit + Integration
+  Inventory ledger + 9 movement types .... Integration (real PG) + golden master
+  replayLedger / costStep ............... Unit (golden §9.3 / §11 / §23)
+  Weighted-average cost + COGS .......... Unit + Integration
+  Cost-basis reset + void-purchase replay  Integration (both backends)
+  Negative-stock ALLOW / PREVENT ........ Integration
+  Void / periods / backdate ............. Integration
+  Idempotency (processed_requests) ...... Integration + real-parallel (race fixed)
+  Concurrency (advisory locks) ......... Stress (real PG: A/B oversell, 25 parallel sales, 5x same key)
+  Dashboard KPIs ....................... Integration (raw-SQL cross-check)
+  Master table (search/filter/sort/page)  Integration (API) + UI implemented
+  Fiscal-year 68/69 view + rollover .... Integration (guards + derived Stock 68 + no-row-moved)
+  Financial reports (monthly/low/oversold) Integration (raw-SQL cross-check)
+  Excel/CSV import pipeline ............. Integration (8 cases, spec §22.1 subset)
+  Import atomicity (ALL_OR_NOTHING) .... Integration (pre-write 422 = nothing written)
+  Import idempotency (file/row hash) ... Integration
+  Exports (7 kinds) ................... Integration
+  Offline queue + sync engine ......... Unit (fake-indexeddb) + Integration (POST /api/sync)
+  Backup pipeline + guarded restore ... Recovery (backup→wipe→restore golden query, both backends)
+  Backup retention (last-copy guard) .. Integration
+  Reconciliation job ................. Integration (detect + auto-heal)
+  Scale (2k products / 20k movements) . Stress (real PG, ~0.6s, reconcile-clean)
+  DB constraints (CHECK/UNIQUE/FK/IDENTITY) Integration (real PG17)
+  Transaction / ledger / reports / import / sync / backup UI  Implemented — NOT browser-verified
+
+Known Limitations
+  - Backup is a logical dump (16 app tables + _migrations), not a byte-for-byte pg_dump —
+    the trimmed @embedded-postgres bundle has no pg_dump. Driver-agnostic and fully tested.
+  - No authentication layer. Spec §16.5 lists a local PIN + separate passphrases; only the
+    backup passphrase is implemented. The HTTP API is currently unauthenticated.
+  - No cloud backup (open Q #15 — provider), no Windows Task Scheduler integration
+    (open Q #16), no standalone backup CLI, no 14/8/12 retention rotation.
+  - No read-through offline cache — only the outbound write queue works offline (§12.1
+    offline *viewing* not built). Sync backoff delay is the caller's to schedule.
+  - Customer-return Unit Cost is not prefilled from the linked sale's COGS (§19.3).
+  - 10k-row import in one transaction not exercised through the commit path (the stress
+    test bulk-inserts movements directly). Mid-write rollback needs fault injection.
+  - `BACKUP_RECOVERY.md` still documents the pg_dump design; needs a rewrite.
+
+Unverified Areas
+  - Every web page in a real browser: drawer submit flows, filter combinations,
+    pagination boundaries, recharts rendering, import preview highlighting, restore UX,
+    connectivity-toggle offline flow. Typecheck + `vite build` + jsdom render smoke pass.
+  - Load profiling at the full §21 scale (10k products / 100k movements) — the seed
+    script exists and runs; indexes cover every query path but were not profiled at size.
+
+Production Risks
+  - `xlsx@0.18.5` — HIGH prototype-pollution advisory, no fix on the npm registry (the
+    SheetJS fix ships only from their CDN). Server-side parsing of owner-supplied files
+    only; single-owner local app. Mitigate by hardening the parse boundary or vendoring
+    the CDN build before any multi-user exposure.
+  - Dev toolchain advisories (vitest / vite / esbuild) — dev-only, not shipped. Bump
+    vitest to 3.x to clear them.
+  - No auth: acceptable only while the app is bound to 127.0.0.1 for a single local user
+    (spec's non-goals rule out multi-user, but a PIN gate is still expected — build it
+    before exposing the port).
+  - Restore does a DELETE-all → INSERT-all in one transaction. Safe and tested, but on a
+    very large database it holds a long write lock; a maintenance-window operation.
+
+Recommended Next Steps
+  1. Local PIN/passphrase auth gate on the API (spec §16.5).
+  2. Resolve open Q #15/#16, then build cloud upload + Task Scheduler + retention rotation.
+  3. Rewrite `BACKUP_RECOVERY.md` for the logical-dump format; add a scripted DR drill.
+  4. Real load profiling with `npm run seed:stress` against Postgres; tune indexes.
+  5. Browser QA pass over every page; wire the customer-return COGS prefill.
+  6. Bump vitest to 3.x; re-audit; decide on the `xlsx` mitigation.
+```
+
+---
+
 ## Log
 
 | Date | Session summary |
@@ -173,6 +256,7 @@ tests green (shared 105, server 66, web 5); the 66 server tests also pass under
 | 2026-08-29 | **Phase 3 done** (commit 92a5d09). shared: `replayLedger` split into pure `costStep`; transaction zod schemas. server: `services/ledger` (postMovementTx single write path, recomputeStockState, voidDocumentTx, getLedger, currentFyView), `services/documents` (createPurchase/Sale/Return/Adjustment/Opening + voidDocument, all via `runIdempotent`), `services/idempotency` (atomic work + processed_requests), `services/periods` / `services/settings` (+ route) / `services/backdate`, `db/lock` (advisory xact lock), PGlite date-OID parser. Routes: transactions / periods / settings + products ledger & stock. Tests: ledger 10, concurrency 3 (serialized under PGlite, multi-client deferred). 137 green total. Docs recorded in commit 0556cfc. |
 | 2026-08-29 | **Phase 4 done** (commit 0ce3265). server: `services/dashboard` + `GET /api/dashboard` (§18.1, SQL-aggregated); `listProducts` extended with per-row `fyView` (68/69 + variance via LATERAL) and dynamic `labels`. web: rebuilt shell (`App` nav dashboard/stock), `DashboardPage` (10 KPI cards), `StockPage` (search / status+category filter / low+oversold toggle / sortable headers / server pagination / row actions), `Drawer` + `TransactionDrawer` (purchase/sale/return/adjust: live stock, auto totals, backdate warning, oversell warning) + `LedgerDrawer` + `EditProductDrawer`; `api.postTxn` sends a fresh Idempotency-Key; `lib/fmt` wraps shared formatters. Tests: dashboard 4 (raw-SQL cross-check + fyView + filters), web smoke updated. 141 green. UI not browser-verified (no display). |
 | 2026-08-29 | **Test infra + idempotency fix.** `db/pg.ts` node-postgres adapter (same `Database` interface); `test/globalSetup.ts` boots one `embedded-postgres` PG17 under `TEST_PG=1`, `makeTestDb()` provisions a fresh DB per file; `npm run test:pg`. Running with real parallel clients exposed an idempotency race PGlite had hidden (5 concurrent same-key → 4× 409 instead of replay); fixed by a per-key `pg_advisory_xact_lock` + re-check inside `runIdempotent`'s transaction. 58 server tests pass on both backends. |
+| 2026-08-30 | **Phase 9 (partial).** `scripts/seed.ts` (§23 mock dataset) + `scripts/stress-seed.ts` (10k/100k, batched, set-based `stock_state` fill). `services/reconcile.ts` + `POST /api/reconcile` (replay vs cache, report drift, optional auto-heal) + `replayProductState` read-only helper. `test/stress/stress.test.ts` (`skipIf` unless `TEST_PG=1`): 2k products + 20k movements ~0.6s reconcile-clean; 25 parallel sales → exact, no lost update. `npm audit`: removed unused `drizzle-orm` (−1 HIGH); `xlsx` HIGH has no registry fix; rest dev-only. Fixed a FIFO-order flake in the offline engine (added a monotonic `ord` field). §24.1 report appended above. Not done: auth layer, real load profiling, cloud/scheduler, DR drill script. |
 | 2026-08-29 | **Phase 8 done** (local backup only). `services/backup.ts`: driver-agnostic **logical** dump (schema from migration files, data via `SELECT *`) — no `pg_dump` in the embedded bundle. Pipeline dump → manifest → gzip → AES-256-GCM (scrypt) → sha256 → verify. `restoreBackup` guarded (confirm phrase, `BAD_PASSPHRASE`, `BACKUP_INTEGRITY_FAILED`, `SCHEMA_NEWER_THAN_APP`, PRE_RESTORE auto-backup, one-tx DELETE-all→INSERT-all, `_migrations` top-up). `deleteBackup` → `LAST_REMAINING_COPY`. `settings.last_backup_at` stamped → real FY-roll guard. Routes `/api/backups*`; web `BackupPage` + nav tab. `backup.test.ts` 8, green on PGlite + real PG. Deferred: cloud upload (#15), Task Scheduler (#16), CLI, full retention rotation, `BACKUP_RECOVERY.md` rewrite. |
 | 2026-08-29 | **Phase 7 done.** server: `services/sync` + `POST /api/sync` (array-order batch, typed 4xx → CONFLICT + continue, 5xx → abort; allowed endpoints purchases/sales/returns/adjustments) + `GET /api/sync/state`. web: `dexie` + `fake-indexeddb` (dev); `offline/db.ts` (queue store, §12.2 fields) + `offline/engine.ts` (`enqueue` reused idempotency key, `flush` FIFO + per-item apply + network-park + `retryItem`/`editAndRetry`/`discardItem`) + `offline/store.ts` (zustand + online/offline listeners + initial flush); `TransactionDrawer` enqueues when offline; `SyncPage` conflict panel + nav badge + offline banner; `initOffline()` in `main.tsx`. Tests: `sync.test.ts` 5, `engine.test.ts` 4. 168 green. Autonomous Phases 1–7 complete. |
 | 2026-08-29 | **Phase 6 done.** server: `@fastify/multipart` + `xlsx`; `services/import/` (headers alias resolver, workbook parse, per-row `cleanData` sanitize, file+row sha256, `pipeline.createImport` preview, `commit.commitImport` one-tx idempotent apply with §13.8 Master Stock re-import effect); routes `POST /imports` (multipart) / `GET /imports/:id` / `/commit` / `/discard` / `/invalid-rows.xlsx`; `services/exports` + `GET /api/exports/:kind.xlsx` (7 kinds). web: `ImportPage` (preview table + mode radios + dup-file ack + result + export buttons) + nav tab. Tests: `import.test.ts` 8. 159 green. UI not browser-verified. Deferred: 10k-row stress + mid-write rollback fault injection → Phase 9. |

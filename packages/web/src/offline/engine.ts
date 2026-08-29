@@ -2,6 +2,11 @@ import { odb, type QueueItem } from './db.js';
 
 export type FetchLike = typeof fetch;
 
+// Strictly increasing ordinal so FIFO holds even for items enqueued in the same
+// millisecond. Time-dominant across sessions, counter-tie-broken within one.
+let ordCounter = 0;
+const nextOrd = (): number => Date.now() * 10_000 + (ordCounter++ % 10_000);
+
 export function isOnline(): boolean {
   return typeof navigator === 'undefined' ? true : navigator.onLine;
 }
@@ -21,6 +26,7 @@ export async function enqueue(endpoint: string, payload: unknown): Promise<Queue
     endpoint,
     syncStatus: 'PENDING',
     retryCount: 0,
+    ord: nextOrd(),
     createdAt: new Date().toISOString(),
     syncedAt: null,
     payload,
@@ -30,9 +36,12 @@ export async function enqueue(endpoint: string, payload: unknown): Promise<Queue
   return item;
 }
 
+const byOrd = (a: QueueItem, b: QueueItem): number =>
+  (a.ord ?? 0) - (b.ord ?? 0) || a.createdAt.localeCompare(b.createdAt);
+
 export async function allItems(): Promise<QueueItem[]> {
   if (!hasStorage()) return [];
-  return odb.queue.orderBy('createdAt').toArray();
+  return (await odb.queue.toArray()).sort(byOrd);
 }
 
 async function due(): Promise<QueueItem[]> {
@@ -40,7 +49,7 @@ async function due(): Promise<QueueItem[]> {
     .where('syncStatus')
     .anyOf('PENDING', 'FAILED')
     .toArray();
-  return items.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return items.sort(byOrd);
 }
 
 export interface FlushSummary {

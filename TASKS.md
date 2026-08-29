@@ -243,13 +243,28 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done (add date)
       (open Q #16), `inventory-backup` standalone CLI, full retention rotation, the
       `BACKUP_RECOVERY.md` runbook refresh for the logical-dump format.
 
-## Phase 9 — Production hardening  ◄ HERE NOW
-- [ ] `scripts/stress-seed.ts` — 10k products, 100k movements.
-- [ ] Load + pagination profiling; add/adjust indexes per findings.
-- [ ] Concurrency stress (N parallel sales; no lost updates).
-- [ ] Import stress (large files, timeout behavior).
-- [ ] Full disaster-recovery drill end to end.
-- [ ] Security review: input handling, backup encryption, local auth, `npm audit`.
-- [ ] Performance report; fill `PROJECT_SPEC.md` §24 checklist.
-- [ ] Produce the §24.1 final verification report.
-      **Verify:** §21 scale targets met; §24 Definition of Done fully green.
+## Phase 9 — Production hardening ✅ 2026-08-29 (commit __PENDING9__) — partial, see notes
+- [x] `scripts/seed.ts` — the §23 mock dataset (SKU-001..004), refuses to run over an
+      existing catalogue without `--force`.
+- [x] `scripts/stress-seed.ts` — configurable (default 10k products / 100k movements),
+      raw batched INSERTs + a set-based `stock_state` fill, prints per-phase timings.
+      `STRESS_PRODUCTS` / `STRESS_MOVES` env overrides.
+- [x] Reconciliation job (`services/reconcile.ts` + `POST /api/reconcile`): replays every
+      product's ACTIVE ledger, reports qty / total-cost / avg-cost drift vs `stock_state`,
+      optionally auto-heals (default from `settings.recon_autoheal`), writes an audit row
+      when drift is found. `replayProductState` added to `services/ledger` for the
+      read-only compare.
+- [x] Concurrency + scale stress (`test/stress/stress.test.ts`, `describe.skipIf` unless
+      `TEST_PG=1`): bulk-load 2,000 products + 20,000 movements (~0.6 s), assert
+      reconciliation-clean + pagination correct at scale; 25 parallel sales on one
+      product → exact final quantity, no lost update, reconcile-clean.
+- [x] Security review — `npm audit` triaged (see the report below): removed the unused
+      `drizzle-orm` (killed one HIGH); `xlsx` HIGH has no registry fix and is mitigated
+      by single-owner local use; the rest are dev-only build/test tooling.
+- [x] §24.1 final verification report — appended to `PROGRESS.md`.
+- [ ] **Not done:** index tuning from real profiling (the existing indexes cover every
+      query path but were not load-profiled at 100k); a scripted end-to-end DR drill
+      beyond the backup/restore test; local auth / PIN (spec lists it — no auth layer is
+      built yet, the API is unauthenticated); the full 10k-row **import** in one
+      transaction (the stress test bulk-inserts movements directly, not through the
+      import commit path).
