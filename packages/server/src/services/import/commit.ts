@@ -33,6 +33,12 @@ async function upsertProduct(
   s: Record<string, unknown>,
 ): Promise<{ id: string; created: boolean }> {
   const sku = String(s.sku);
+  const knownUnit = s.unit
+    ? (await tx.query('SELECT 1 FROM units WHERE code = $1', [String(s.unit)])).rows.length > 0
+      ? String(s.unit)
+      : null
+    : null;
+
   const found = await tx.query<{ id: string }>('SELECT id FROM products WHERE sku = $1', [sku]);
   if (found.rows[0]) {
     const id = found.rows[0].id;
@@ -43,15 +49,14 @@ async function upsertProduct(
            min_stock = COALESCE($4, min_stock),
            updated_at = now()
        WHERE id = $1`,
-      [id, String(s.name ?? ''), s.unit ?? null, s.min_stock ?? null],
+      [id, String(s.name ?? ''), knownUnit, s.min_stock ?? null],
     );
     return { id, created: false };
   }
-  const unit = String(s.unit ?? 'piece');
-  const u = await tx.query('SELECT 1 FROM units WHERE code = $1', [unit]);
-  if (u.rows.length === 0) {
-    throw new AppError('VALIDATION_FAILED', { userMessage: `ไม่พบหน่วยนับ ${unit}`, details: { code: 'UNKNOWN_UNIT' } });
-  }
+  // Unknown unit labels (typos, Thai words not yet in `units`) fall back to 'piece' —
+  // the unit is cosmetic for stock math and the owner can fix it later. The preview
+  // still surfaces an UNKNOWN_UNIT warning for these rows.
+  const unit = knownUnit ?? 'piece';
   const id = randomUUID();
   await tx.query(
     `INSERT INTO products (id, sku, name, unit_code, min_stock)
@@ -69,6 +74,7 @@ async function applyOpening(
   targetQty: string,
   occurredOn: string,
   mode: 'ALLOW' | 'PREVENT',
+  unitCostSatang = 0,
 ): Promise<number> {
   const mv = await tx.query<{ type: string; status: string }>(
     `SELECT type, status FROM movements WHERE product_id = $1`,
@@ -89,7 +95,7 @@ async function applyOpening(
     }
     await postMovementTx(tx, {
       productId, type: 'OPENING', occurredOn, quantityMagnitude: targetQty,
-      unitCostSatang: 0, sourceKind: 'OPENING', negativeStockMode: mode,
+      unitCostSatang, sourceKind: 'OPENING', negativeStockMode: mode,
     });
     return 1;
   }
@@ -180,7 +186,8 @@ export function commitImport(
           if (created) createdProducts += 1;
           else updatedProducts += 1;
           const today = new Date().toISOString().slice(0, 10);
-          movementsCreated += await applyOpening(tx, id, String(s.stock_68), today, mode);
+          const openingCost = s.unit_cost != null ? Number(s.unit_cost) : 0;
+          movementsCreated += await applyOpening(tx, id, String(s.stock_68), today, mode, openingCost);
         } else if (batch.kind === 'PURCHASES') {
           const prod = await tx.query<{ id: string }>('SELECT id FROM products WHERE sku = $1', [s.sku]);
           const productId = prod.rows[0]!.id;

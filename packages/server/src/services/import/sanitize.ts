@@ -88,6 +88,16 @@ export function sanitizeRows(
       }
       const unitRaw = str(cell(row, map, 'unit'));
       sanitized.unit = unitRaw === '' ? 'piece' : unitRaw.toLowerCase();
+      // optional opening unit cost (IMPORT_FORMAT.md §2 — not in the base template)
+      const costRaw = str(cell(row, map, 'unit_cost'));
+      if (costRaw !== '') {
+        try {
+          sanitized.unit_cost = cleanMoneySatang(costRaw, { field: 'unit_cost' });
+        } catch (e) {
+          if (SanitizationError.is(e)) err(errors, 'unit_cost', e.code);
+          else throw e;
+        }
+      }
     } else {
       // PURCHASES / SALES
       try {

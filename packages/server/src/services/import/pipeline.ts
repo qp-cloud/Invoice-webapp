@@ -44,6 +44,9 @@ async function evaluate(
   const prod = await db.query<{ id: string; sku: string }>('SELECT id, sku FROM products');
   const skuToId = new Map(prod.rows.map((r) => [r.sku, r.id]));
 
+  const unitRows = await db.query<{ code: string }>('SELECT code FROM units');
+  const knownUnits = new Set(unitRows.rows.map((r) => r.code));
+
   // closed periods referenced by the file
   const yms = new Set<string>();
   for (const r of rows) {
@@ -94,6 +97,10 @@ async function evaluate(
         const exists = skuToId.has(sku);
         if (!exists && String(s.name ?? '') === '') {
           errors.push({ field: 'name', code: 'NAME_REQUIRED_ON_CREATE', level: 'error' });
+        }
+        const unit = String(s.unit ?? 'piece');
+        if (unit !== 'piece' && !knownUnits.has(unit)) {
+          r.warnings.push({ field: 'unit', code: 'UNKNOWN_UNIT' }); // falls back to 'piece' on commit
         }
         action = exists ? 'UPDATE' : 'CREATE';
       } else {

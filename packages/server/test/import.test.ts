@@ -179,6 +179,31 @@ describe('Excel/CSV import pipeline (spec §13, §15)', () => {
     expect(sc.json()).toMatchObject({ committedRows: 1, skippedRows: 2, movementsCreated: 1 });
   });
 
+  it('MASTER_STOCK with Thai headers, unknown units, and a price column', async () => {
+    const aoa = [
+      ['รหัสสินค้า', 'ชื่อสินค้า', 'หน่วยนับ', 'ราคา', 'ยอดคงเหลือ'],
+      ['TH-001', 'เหล็กเพลา', 'เส้น', '185.00', '482.00'],
+      ['TH-002', 'แหวนยาง', 'กล่อง', '1,224.30', '20'],
+    ];
+    const up = await upload('MASTER_STOCK', aoa, 'thai.xlsx');
+    expect(up.statusCode).toBe(200);
+    const preview = up.json() as {
+      batchId: string;
+      totals: Record<string, number>;
+      rows: { warnings: { code: string }[] }[];
+    };
+    expect(preview.totals).toMatchObject({ validRows: 2, invalidRows: 0 });
+    expect(preview.rows.every((r) => r.warnings.some((w) => w.code === 'UNKNOWN_UNIT'))).toBe(true);
+
+    const c = await commit(preview.batchId, { mode: 'ALL_OR_NOTHING' });
+    expect(c.json()).toMatchObject({ createdProducts: 2, movementsCreated: 2 });
+
+    const p = (await app.inject({ method: 'GET', url: '/api/products?q=TH-001' })).json();
+    expect(p.rows[0].unitCode).toBe('piece'); // unknown 'เส้น' fell back
+    expect(p.rows[0].stock.qtyOnHand).toBe('482');
+    expect(p.rows[0].stock.avgCostSatang).toBe(18500); // opening posted at ฿185.00
+  });
+
   it('exports return .xlsx buffers for every kind', async () => {
     for (const [url, col] of [
       ['/api/exports/current-stock.xlsx', 'sku'],

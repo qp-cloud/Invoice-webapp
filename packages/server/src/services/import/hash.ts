@@ -8,7 +8,7 @@ export function fileHash(buffer: Buffer): string {
 
 /** The business fields that identify a row for row-level dedup, per kind (IMPORT_FORMAT.md §6). */
 const HASH_FIELDS: Record<ImportKind, string[]> = {
-  MASTER_STOCK: ['sku', 'stock_68', 'min_stock', 'unit', 'name'],
+  MASTER_STOCK: ['sku', 'stock_68', 'min_stock', 'unit', 'unit_cost', 'name'],
   PURCHASES: ['date', 'sku', 'quantity', 'unit_cost', 'invoice_no', 'supplier', 'note'],
   SALES: ['date', 'sku', 'quantity', 'selling_price', 'channel', 'bill_no', 'note'],
 };

@@ -13,14 +13,22 @@ const SPECS: Record<ImportKind, FieldSpec[]> = {
     {
       field: 'stock_68',
       required: 'always',
-      aliases: ['stock_68', 'stock68', 'opening', 'opening_stock', 'ยอดยกมา', 'สต็อก68'],
+      aliases: [
+        'stock_68', 'stock68', 'opening', 'opening_stock',
+        'ยอดยกมา', 'สต็อก68', 'ยอดคงเหลือ', 'คงเหลือ',
+      ],
     },
     {
       field: 'min_stock',
       required: 'never',
       aliases: ['min_stock', 'minstock', 'min', 'safety_stock', 'ขั้นต่ำ'],
     },
-    { field: 'unit', required: 'never', aliases: ['unit', 'หน่วย', 'uom'] },
+    { field: 'unit', required: 'never', aliases: ['unit', 'หน่วย', 'uom', 'หน่วยนับ'] },
+    {
+      field: 'unit_cost',
+      required: 'never',
+      aliases: ['unit_cost', 'cost', 'price', 'ราคา', 'ราคาทุน', 'ต้นทุน', 'ต้นทุนต่อหน่วย'],
+    },
   ],
   PURCHASES: [
     { field: 'date', required: 'always', aliases: ['date', 'วันที่', 'doc_date', 'purchase_date'] },
