@@ -130,7 +130,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done (add date)
       divide-by-zero; cost-basis reset; void-purchase replay; rollover guard + advance +
       "no movement row changed" + derived Stock 68 = prior-year close. 45 server tests.
 
-## Phase 6 — Excel / CSV ✅ 2026-08-29 (commit __PENDING6__)
+## Phase 6 — Excel / CSV ✅ 2026-08-29 (commit a880b21)
 - [x] `POST /api/imports` (multipart, `@fastify/multipart`): parse (`xlsx`/SheetJS) →
       sanitize (`cleanData`) → validate (SKU resolves, closed period, in-file dup SKU,
       name-on-create) → duplicate-check (file + row hash) → build preview; only
@@ -167,17 +167,42 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done (add date)
       deliberate fault injection (the pre-write 422 path already proves "nothing
       written"). UI not browser-verified.
 
-## Phase 7 — Offline & sync  ◄ HERE NOW
-- [ ] Dexie schema: read cache, outbound queue (fields per §12.2), UI prefs.
-- [ ] Optimistic offline create for purchase/sale/return/adjustment.
-- [ ] Sync engine: FIFO, one-at-a-time, idempotency key generated once + reused,
-      exponential backoff, conflict isolation.
-- [ ] `POST /api/sync` batch endpoint; `GET /api/sync/state`.
-- [ ] Conflict panel UI (retry / edit & retry / discard-with-audit).
-      **Verify:** queue FIFO test; retry with same key creates nothing; one conflict
-      isolates while the rest proceed; state-machine transitions covered.
+## Phase 7 — Offline & sync ✅ 2026-08-29 (commit __PENDING7__)
+- [x] Dexie schema (`web/src/offline/db.ts`): `queue` store with every §12.2 field
+      (localId / serverId / idempotencyKey / syncStatus / retryCount / createdAt /
+      syncedAt / payload / error) + a `prefs` kv store. `hasStorage()` guard so
+      IndexedDB-less contexts (tests/SSR) treat the queue as a no-op.
+- [x] Optimistic offline create: `TransactionDrawer` routes through `isOnline()` —
+      online = `api.postTxn`, offline = `enqueue(endpoint, body)` then close. Same
+      camelCase body shape works on both the direct endpoints and `/api/sync`.
+- [x] Sync engine (`web/src/offline/engine.ts`): `flush()` sends the whole due set
+      (PENDING + FAILED, sorted by createdAt = FIFO) to `POST /api/sync`; per-result
+      apply — SYNCED sets serverId + syncedAt, CONFLICT parks with the code+message;
+      network/5xx parks the batch PENDING and bumps `retryCount` (caller backs off).
+      Idempotency key generated once at `enqueue`, reused on every retry;
+      `editAndRetry` mints a fresh key. `store.ts` wires `online`/`offline` events +
+      an initial flush.
+- [x] `POST /api/sync` (`services/sync.ts` + route): `{ operations: [{ localId,
+      idempotencyKey, endpoint, body }] }`, processed in array order one at a time;
+      allowed endpoints `/purchases` `/sales` `/returns` `/adjustments`; typed 4xx →
+      `{ status: 'CONFLICT', code, message, details }` and the batch continues; 5xx →
+      throws so the client retries the remainder. `GET /api/sync/state` →
+      `{ serverTime, currentFiscalYear, openPeriods, negativeStockMode }`.
+- [x] Conflict panel (`SyncPage`): lists PENDING/SYNCING/FAILED/CONFLICT items with the
+      payload + server reason + retry / discard; "ซิงค์เดี๋ยวนี้" button; nav badge with
+      the queued count; offline banner. (Edit-and-retry exists in the engine;
+      discard-writes-audit is a server-side follow-up — the offline item never reached
+      the server so there is nothing to audit yet.)
+      **Verified (automated):** server `sync.test.ts` (5) — state payload; FIFO batch
+      with a serverId per synced op; same-key re-flush replays and creates nothing;
+      closed-period CONFLICT isolated while the rest sync; PREVENT-oversell CONFLICT
+      isolated. web `engine.test.ts` (4) — PENDING enqueue with a reused key; FIFO
+      order in the request + per-item SYNCED/CONFLICT apply; network failure → PENDING +
+      retryCount bump; retry of a conflicted item succeeds. **Not verified:** the flow
+      in a real browser with actual connectivity toggling; exponential-backoff timing
+      (retryCount is tracked; the delay schedule is the caller's to apply).
 
-## Phase 8 — Backup & recovery
+## Phase 8 — Backup & recovery  ◄ HERE NOW
 - [ ] Backup pipeline (§16.3): `pg_dump` (custom format) → `manifest.json` (app/schema/pg
       versions, per-table row counts, dump sha256) → compress → **encrypt locally**
       (AES-256-GCM / age, backup passphrase) → sha256 of the artifact → verify

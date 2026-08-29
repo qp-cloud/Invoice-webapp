@@ -3,6 +3,8 @@ import { useMemo, useState } from 'react';
 import { api, ApiRequestError } from '../api/client.js';
 import type { Product } from '../api/types.js';
 import { qty, thb } from '../lib/fmt.js';
+import { enqueue, isOnline } from '../offline/engine.js';
+import { useOffline } from '../offline/store.js';
 import { Drawer } from './Drawer.js';
 
 export type TxnKind = 'purchase' | 'sale' | 'return' | 'adjust';
@@ -74,45 +76,46 @@ export function TransactionDrawer({ kind, product, onClose, onDone }: Props): JS
 
   const wouldGoNegative = projected < 0;
 
+  const buildRequest = (): { endpoint: string; body: Record<string, unknown> } => {
+    const base: Record<string, unknown> = { productId: product.id, occurredOn };
+    if (note) base.note = note;
+    if (backdated && backdateReason) base.backdateReason = backdateReason;
+
+    if (kind === 'purchase') {
+      return {
+        endpoint: '/purchases',
+        body: { ...base, quantity, unitCostSatang: unitSatang, invoiceNo: ref1 || undefined, supplier: ref2 || undefined },
+      };
+    }
+    if (kind === 'sale') {
+      return {
+        endpoint: '/sales',
+        body: { ...base, quantity, unitPriceSatang: unitSatang, billNo: ref1 || undefined, channel: ref2 || undefined },
+      };
+    }
+    if (kind === 'return') {
+      return {
+        endpoint: '/returns',
+        body: { ...base, kind: 'CUSTOMER', quantity, unitCostSatang: unitSatang },
+      };
+    }
+    return {
+      endpoint: '/adjustments',
+      body: { ...base, quantityDelta: signedDelta, reasonCode, ...(deltaNum > 0 ? { unitCostSatang: unitSatang } : {}) },
+    };
+  };
+
   const submit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      const base: Record<string, unknown> = { productId: product.id, occurredOn };
-      if (note) base.note = note;
-      if (backdated && backdateReason) base.backdateReason = backdateReason;
-
-      if (kind === 'purchase') {
-        await api.postTxn('/purchases', {
-          ...base,
-          quantity,
-          unitCostSatang: unitSatang,
-          invoiceNo: ref1 || undefined,
-          supplier: ref2 || undefined,
-        });
-      } else if (kind === 'sale') {
-        await api.postTxn('/sales', {
-          ...base,
-          quantity,
-          unitPriceSatang: unitSatang,
-          billNo: ref1 || undefined,
-          channel: ref2 || undefined,
-        });
-      } else if (kind === 'return') {
-        await api.postTxn('/returns', {
-          ...base,
-          kind: 'CUSTOMER',
-          quantity,
-          unitCostSatang: unitSatang,
-        });
+      const { endpoint, body } = buildRequest();
+      if (isOnline()) {
+        await api.postTxn(endpoint, body);
       } else {
-        await api.postTxn('/adjustments', {
-          ...base,
-          quantityDelta: signedDelta,
-          reasonCode,
-          ...(deltaNum > 0 ? { unitCostSatang: unitSatang } : {}),
-        });
+        await enqueue(endpoint, body);
+        await useOffline.getState().refresh();
       }
       onDone();
     } catch (err) {
@@ -254,12 +257,18 @@ export function TransactionDrawer({ kind, product, onClose, onDone }: Props): JS
 
         {error && <p className="text-red-600">{error}</p>}
 
+        {!isOnline() && (
+          <p className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800">
+            ออฟไลน์ — รายการจะถูกบันทึกไว้และซิงค์เมื่อกลับมาออนไลน์
+          </p>
+        )}
+
         <button
           type="submit"
           disabled={busy}
           className="mt-1 rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
         >
-          {busy ? 'กำลังบันทึก…' : 'บันทึก'}
+          {busy ? 'กำลังบันทึก…' : isOnline() ? 'บันทึก' : 'บันทึก (ออฟไลน์)'}
         </button>
       </form>
     </Drawer>

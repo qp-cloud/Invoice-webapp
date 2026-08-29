@@ -7,10 +7,11 @@
 > "Implemented" alone never means "working" — it means code exists and type-checks.
 > Never record a level higher than the tests that were actually executed.
 
-**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phases 1–6 complete**
-(commits 07c6fdf, 7269c20, 92a5d09, 0556cfc, 0ce3265, 76d0ae7 + Phase 6). 159 tests
-green (shared 105, server 53, web 1). Phase 4/5/6 UI not verified in a real browser (no
-display in this env). Autonomous build of Phases 1–7 in progress; commit per phase.
+**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phases 1–7 complete**
+(commits 07c6fdf, 7269c20, 92a5d09, 0556cfc, 0ce3265, 76d0ae7, a880b21 + Phase 7).
+168 tests green (shared 105, server 58, web 5). Phase 4–7 UI not verified in a real
+browser (no display in this env). Autonomous build of Phases 1–7 **done** — Phase 8
+(backup) is blocked on real Postgres + open questions #15/#16; Phase 9 remains.
 
 ---
 
@@ -73,9 +74,9 @@ display in this env). Autonomous build of Phases 1–7 in progress; commit per p
 | Exports (all report kinds) | §14.3, brief §27 | Integration tested | `GET /api/exports/:kind.xlsx` — current-stock / ledger / purchases / sales / monthly-report / low-stock / oversold |
 | Idempotency middleware (`processed_requests`) | §14.1 | Integration tested | `runIdempotent` atomic (work + processed_requests in one tx); replay `_replayed:true`; different body → 422; doc tables carry `idempotency_key UNIQUE` |
 | Concurrency safety (per-product lock, no lost updates) | §14.2 | Integration tested (serialized) | `pg_advisory_xact_lock` + `SELECT … FOR UPDATE`; A/B 80/50 ALLOW + PREVENT + parallel-idempotency pass under PGlite. **Genuine multi-client "no lost update" deferred to real Postgres** |
-| Offline cache + outbound queue (Dexie) | §12.2 | Not started | |
-| Sync engine (FIFO, retry-no-dup, conflict isolation) | §12.2–§12.3 | Not started | |
-| Sync conflict UI | §12.3 | Not started | |
+| Offline cache + outbound queue (Dexie) | §12.2 | Unit tested | `web/src/offline/db.ts` queue store with all §12.2 fields + `hasStorage()` guard; `TransactionDrawer` enqueues when `!isOnline()` |
+| Sync engine (FIFO, retry-no-dup, conflict isolation) | §12.2–§12.3 | Unit + integration tested | client `engine.flush` FIFO + per-item apply + network-park + retry; server `POST /api/sync` array-order, typed 4xx → CONFLICT + continue, 5xx → abort; same-key replay creates nothing |
+| Sync conflict UI | §12.3 | Implemented (UI unverified) | `SyncPage`: PENDING/CONFLICT/FAILED list + retry / discard + "ซิงค์เดี๋ยวนี้"; nav badge + offline banner. `editAndRetry` in engine; discard-with-audit is a server follow-up |
 | Backup pipeline (dump→manifest→compress→encrypt→hash→verify) | §16.3 | Not started | encrypt locally before any cloud |
 | Backup scheduling (Task Scheduler + startup catch-up) | §16.2 | Not started | Windows Task Scheduler primary |
 | Backup retention (never delete last copy) | §16.3, §16.6 | Not started | |
@@ -105,9 +106,10 @@ display in this env). Autonomous build of Phases 1–7 in progress; commit per p
 | Fiscal-year rollover (server) | 4 | 4 | 0 | Integration tested |
 | Financial — void-purchase replay + cost-basis reset (server) | 2 | 2 | 0 | Integration tested |
 | Excel/CSV import + exports (server) | 8 | 8 | 0 | Integration tested |
-| Web (shell + dashboard + master table + reports + import nav) | 1 | 1 | 0 | Component tested (drawers + charts + import UI not browser-verified) |
+| Offline sync batch (server) | 5 | 5 | 0 | Integration tested |
+| Offline sync engine (web, fake-indexeddb) | 4 | 4 | 0 | Unit tested |
+| Web (shell + dashboard + master table + reports + import + sync nav) | 1 | 1 | 0 | Component tested (drawers + charts + import + sync UI not browser-verified) |
 | Recovery | 0 | 0 | 0 | Not started (needs real Postgres) |
-| Offline / sync | 0 | 0 | 0 | Not started |
 
 ---
 
@@ -136,7 +138,15 @@ display in this env). Autonomous build of Phases 1–7 in progress; commit per p
 - Customer-return **Unit Cost prefill from the linked sale's COGS** (spec §19.3) still not
   wired — needs a sale-lookup endpoint.
 - Offline `PREVENT` overselling is enforceable only at sync time (design constraint,
-  `PROJECT_SPEC.md` §6.1, §28.2) — not a defect; must be tested as specified.
+  `PROJECT_SPEC.md` §6.1, §28.2) — the sync path returns it as a `CONFLICT`
+  (`STOCK_WOULD_GO_NEGATIVE`), tested in `sync.test.ts`.
+- Offline sync: the engine tracks `retryCount` but does not itself schedule the
+  exponential-backoff delay — the caller (a future `setTimeout` loop / service worker)
+  applies the wait. No read-through cache yet: offline viewing of products/ledgers
+  (§12.1) is not implemented; only the outbound write queue is.
+- Sync **discard-with-audit** (§12.3): discarding a queued item just deletes it locally;
+  it never reached the server, so there is no server-side audit row. If an audit trail of
+  discards is wanted, add a client-side log or a `POST /api/sync/discard` note endpoint.
 
 ---
 
@@ -152,5 +162,6 @@ display in this env). Autonomous build of Phases 1–7 in progress; commit per p
 | 2026-08-29 | **Phase 2 done** (commit 7269c20). shared: cleanData (sku/number/date) + money (satang/micro) + format + domain + zod schemas, 99 unit tests. server: product master CRUD + SKU UNIQUE + UPSERT + categories + units + audit, 18 integration tests. web: minimal products page. Fixed decimal.js import (named `{ Decimal }`, not default) under verbatimModuleSyntax. |
 | 2026-08-29 | **Phase 3 done** (commit 92a5d09). shared: `replayLedger` split into pure `costStep`; transaction zod schemas. server: `services/ledger` (postMovementTx single write path, recomputeStockState, voidDocumentTx, getLedger, currentFyView), `services/documents` (createPurchase/Sale/Return/Adjustment/Opening + voidDocument, all via `runIdempotent`), `services/idempotency` (atomic work + processed_requests), `services/periods` / `services/settings` (+ route) / `services/backdate`, `db/lock` (advisory xact lock), PGlite date-OID parser. Routes: transactions / periods / settings + products ledger & stock. Tests: ledger 10, concurrency 3 (serialized under PGlite, multi-client deferred). 137 green total. Docs recorded in commit 0556cfc. |
 | 2026-08-29 | **Phase 4 done** (commit 0ce3265). server: `services/dashboard` + `GET /api/dashboard` (§18.1, SQL-aggregated); `listProducts` extended with per-row `fyView` (68/69 + variance via LATERAL) and dynamic `labels`. web: rebuilt shell (`App` nav dashboard/stock), `DashboardPage` (10 KPI cards), `StockPage` (search / status+category filter / low+oversold toggle / sortable headers / server pagination / row actions), `Drawer` + `TransactionDrawer` (purchase/sale/return/adjust: live stock, auto totals, backdate warning, oversell warning) + `LedgerDrawer` + `EditProductDrawer`; `api.postTxn` sends a fresh Idempotency-Key; `lib/fmt` wraps shared formatters. Tests: dashboard 4 (raw-SQL cross-check + fyView + filters), web smoke updated. 141 green. UI not browser-verified (no display). |
+| 2026-08-29 | **Phase 7 done.** server: `services/sync` + `POST /api/sync` (array-order batch, typed 4xx → CONFLICT + continue, 5xx → abort; allowed endpoints purchases/sales/returns/adjustments) + `GET /api/sync/state`. web: `dexie` + `fake-indexeddb` (dev); `offline/db.ts` (queue store, §12.2 fields) + `offline/engine.ts` (`enqueue` reused idempotency key, `flush` FIFO + per-item apply + network-park + `retryItem`/`editAndRetry`/`discardItem`) + `offline/store.ts` (zustand + online/offline listeners + initial flush); `TransactionDrawer` enqueues when offline; `SyncPage` conflict panel + nav badge + offline banner; `initOffline()` in `main.tsx`. Tests: `sync.test.ts` 5, `engine.test.ts` 4. 168 green. Autonomous Phases 1–7 complete. |
 | 2026-08-29 | **Phase 6 done.** server: `@fastify/multipart` + `xlsx`; `services/import/` (headers alias resolver, workbook parse, per-row `cleanData` sanitize, file+row sha256, `pipeline.createImport` preview, `commit.commitImport` one-tx idempotent apply with §13.8 Master Stock re-import effect); routes `POST /imports` (multipart) / `GET /imports/:id` / `/commit` / `/discard` / `/invalid-rows.xlsx`; `services/exports` + `GET /api/exports/:kind.xlsx` (7 kinds). web: `ImportPage` (preview table + mode radios + dup-file ack + result + export buttons) + nav tab. Tests: `import.test.ts` 8. 159 green. UI not browser-verified. Deferred: 10k-row stress + mid-write rollback fault injection → Phase 9. |
 | 2026-08-29 | **Phase 5 done.** server: `services/fiscalYear` + `POST /api/fiscal-year/roll` (confirm + all-12-CLOSED + backup guard + advance + open new periods + `ROLL_FISCAL_YEAR` audit, no movement rows touched); Stock 68 reworked to a derived ledger cutoff (`type='OPENING' OR occurred_on < CFY start`) in `currentFyView` / dashboard / `listProducts` so a rollover yields the prior-year close with no snapshot; `services/reports` + `GET /api/reports/monthly?ym=` / `/low-stock` / `/oversold` (SQL-aggregated, margin divide-by-zero guarded). web: `ReportsPage` (recharts bar chart + monthly table w/ totals footer + low-stock + oversold lists + month picker) + "รายงาน" nav tab; added `recharts` dep. Tests: `fiscalYear` 4, `reports` 4, `financial` 2 (void-purchase replay + cost-basis reset). 151 green. `vite build` OK. UI not browser-verified. |

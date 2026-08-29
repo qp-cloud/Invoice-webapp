@@ -17,6 +17,7 @@ import { periodRoutes } from './routes/periods.js';
 import { productRoutes } from './routes/products.js';
 import { reportRoutes } from './routes/reports.js';
 import { settingsRoutes } from './routes/settings.js';
+import { syncRoutes } from './routes/sync.js';
 import { transactionRoutes } from './routes/transactions.js';
 
 declare module 'fastify' {
@@ -55,6 +56,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(reportRoutes, { prefix: '/api' });
   await app.register(importRoutes, { prefix: '/api' });
   await app.register(exportRoutes, { prefix: '/api' });
+  await app.register(syncRoutes, { prefix: '/api' });
   await app.register(settingsRoutes, { prefix: '/api' });
 
   return app;

@@ -1,13 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useOffline } from './offline/store.js';
 import { DashboardPage } from './pages/DashboardPage.js';
 import { ImportPage } from './pages/ImportPage.js';
 import { ReportsPage } from './pages/ReportsPage.js';
 import { StockPage } from './pages/StockPage.js';
+import { SyncPage } from './pages/SyncPage.js';
 
-type View = 'dashboard' | 'stock' | 'reports' | 'import';
+type View = 'dashboard' | 'stock' | 'reports' | 'import' | 'sync';
 
 export function App(): JSX.Element {
   const [view, setView] = useState<View>('dashboard');
+  const { online, pendingCount, conflictCount, refresh } = useOffline();
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh, view]);
+
+  const queued = pendingCount + conflictCount;
 
   return (
     <div className="min-h-screen">
@@ -25,11 +34,23 @@ export function App(): JSX.Element {
         <NavButton active={view === 'import'} onClick={() => setView('import')}>
           นำเข้า/ส่งออก
         </NavButton>
+        <NavButton active={view === 'sync'} onClick={() => setView('sync')}>
+          ซิงค์{queued > 0 ? ` (${queued})` : ''}
+        </NavButton>
+        <span className="ml-auto text-xs text-slate-500">
+          {online ? '🟢 ออนไลน์' : '🔴 ออฟไลน์'}
+        </span>
       </nav>
+      {!online && (
+        <div className="bg-amber-100 px-6 py-1.5 text-center text-sm text-amber-800">
+          ออฟไลน์ — รายการใหม่จะถูกจัดคิวไว้ซิงค์ภายหลัง
+        </div>
+      )}
       {view === 'dashboard' && <DashboardPage />}
       {view === 'stock' && <StockPage />}
       {view === 'reports' && <ReportsPage />}
       {view === 'import' && <ImportPage />}
+      {view === 'sync' && <SyncPage />}
     </div>
   );
 }
