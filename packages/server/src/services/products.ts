@@ -20,6 +20,14 @@ export interface ProductStock {
   avgCostSatang: number;
 }
 
+/** Per-product 68/69 view for the master table (spec §19.1). */
+export interface ProductFyView {
+  stock68: string;
+  purchasesCfy: string;
+  salesCfy: string;
+  variance: string;
+}
+
 export interface ProductRow {
   id: string;
   sku: string;
@@ -32,7 +40,10 @@ export interface ProductRow {
   updatedAt: string;
 }
 
-export type ProductWithStock = ProductRow & { stock: ProductStock };
+export type ProductWithStock = ProductRow & {
+  stock: ProductStock;
+  fyView?: ProductFyView;
+};
 
 const SELECT_WITH_STOCK = `
   SELECT p.id, p.sku, p.name, p.category_id, p.unit_code, p.min_stock,
@@ -45,12 +56,18 @@ const SELECT_WITH_STOCK = `
 
 function shape(row: Record<string, unknown>): ProductWithStock {
   const c = camelize<
-    ProductRow & { qtyOnHand: string; avgCostMicro: number | string }
+    ProductRow & {
+      qtyOnHand: string;
+      avgCostMicro: number | string;
+      fyStock68?: string | null;
+      fyPurchasesCfy?: string | null;
+      fySalesCfy?: string | null;
+    }
   >(row);
   const qty = new Decimal(c.qtyOnHand ?? '0');
   const minStock = new Decimal(c.minStock);
   const avgMicro = Number(c.avgCostMicro ?? 0);
-  return {
+  const out: ProductWithStock = {
     id: c.id,
     sku: c.sku,
     name: c.name,
@@ -68,6 +85,17 @@ function shape(row: Record<string, unknown>): ProductWithStock {
       avgCostSatang: Math.round(avgMicro / 10_000),
     },
   };
+  if (c.fyStock68 != null) {
+    const purchasesCfy = new Decimal(c.fyPurchasesCfy ?? '0');
+    const salesCfy = new Decimal(c.fySalesCfy ?? '0');
+    out.fyView = {
+      stock68: new Decimal(c.fyStock68).toString(),
+      purchasesCfy: purchasesCfy.toString(),
+      salesCfy: salesCfy.toString(),
+      variance: purchasesCfy.minus(salesCfy).toString(),
+    };
+  }
+  return out;
 }
 
 export async function getProductById(
@@ -234,6 +262,8 @@ export interface ProductPage {
   pageSize: number;
   total: number;
   totalPages: number;
+  fiscalYear?: number;
+  labels?: { stock68: string; purchases: string; sales: string };
 }
 
 const SORT_COLUMN: Record<ListProductsQuery['sort'], string> = {
@@ -247,6 +277,7 @@ const SORT_COLUMN: Record<ListProductsQuery['sort'], string> = {
 export async function listProducts(
   db: Queryable,
   q: ListProductsQuery,
+  fiscalYear?: number,
 ): Promise<ProductPage> {
   const where: string[] = [];
   const params: unknown[] = [];
@@ -279,18 +310,54 @@ export async function listProducts(
   const total = Number(countRes.rows[0]?.n ?? 0);
 
   const offset = (q.page - 1) * q.pageSize;
+  const gregYear =
+    fiscalYear !== undefined && Number.isInteger(fiscalYear) ? fiscalYear - 543 : null;
+  const fySelect = gregYear
+    ? `, fv.stock68 AS fy_stock68, fv.purchases_cfy AS fy_purchases_cfy, fv.sales_cfy AS fy_sales_cfy`
+    : '';
+  const fyJoin = gregYear
+    ? `LEFT JOIN LATERAL (
+         SELECT
+           COALESCE(sum(m.quantity) FILTER (WHERE m.type = 'OPENING'), 0)::text AS stock68,
+           COALESCE(sum(m.quantity) FILTER (WHERE m.type = 'PURCHASE'
+                     AND extract(year FROM m.occurred_on) = ${gregYear}), 0)::text AS purchases_cfy,
+           COALESCE(-sum(m.quantity) FILTER (WHERE m.type = 'SALE'
+                     AND extract(year FROM m.occurred_on) = ${gregYear}), 0)::text AS sales_cfy
+         FROM movements m
+         WHERE m.product_id = p.id AND m.status = 'ACTIVE'
+       ) fv ON true`
+    : '';
+
   const listRes = await db.query(
-    `${SELECT_WITH_STOCK} ${whereSql}
+    `SELECT p.id, p.sku, p.name, p.category_id, p.unit_code, p.min_stock,
+            p.active, p.created_at, p.updated_at,
+            COALESCE(ss.qty_on_hand, 0)::text AS qty_on_hand,
+            COALESCE(ss.avg_cost_micro, 0)    AS avg_cost_micro${fySelect}
+     FROM products p
+     LEFT JOIN stock_state ss ON ss.product_id = p.id
+     ${fyJoin}
+     ${whereSql}
      ORDER BY ${SORT_COLUMN[q.sort]} ${q.dir === 'desc' ? 'DESC' : 'ASC'}, p.id ASC
      LIMIT ${q.pageSize} OFFSET ${offset}`,
     params,
   );
 
+  const cfyShort = fiscalYear !== undefined ? String(fiscalYear).slice(-2) : '';
   return {
     rows: listRes.rows.map((r) => shape(r as Record<string, unknown>)),
     page: q.page,
     pageSize: q.pageSize,
     total,
     totalPages: Math.max(1, Math.ceil(total / q.pageSize)),
+    ...(fiscalYear !== undefined
+      ? {
+          fiscalYear,
+          labels: {
+            stock68: `Stock ${cfyShort}`,
+            purchases: `ซื้อเข้า ${cfyShort}`,
+            sales: `ขายออก ${cfyShort}`,
+          },
+        }
+      : {}),
   };
 }

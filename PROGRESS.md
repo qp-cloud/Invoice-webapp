@@ -7,9 +7,10 @@
 > "Implemented" alone never means "working" — it means code exists and type-checks.
 > Never record a level higher than the tests that were actually executed.
 
-**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phases 1–3 complete and
-verified** (commits 07c6fdf, 7269c20, 92a5d09). 137 tests green (shared 105, server 31,
-web 1). Autonomous build of Phases 1–7 in progress; commit per phase.
+**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phases 1–4 complete**
+(commits 07c6fdf, 7269c20, 92a5d09, 0556cfc + Phase 4). 141 tests green (shared 105,
+server 35, web 1). Phase 4 UI not verified in a real browser (no display in this env).
+Autonomous build of Phases 1–7 in progress; commit per phase.
 
 ---
 
@@ -55,14 +56,15 @@ web 1). Autonomous build of Phases 1–7 in progress; commit per phase.
 | Sales (live stock before confirm) | §10.2, §19.3 | Integration tested (API) | `createSale`; SALE movement + `cogs_satang`; live-stock UI = Phase 4 |
 | Customer / supplier returns | §10.3 | Integration tested | `createReturn`; CUSTOMER requires unitCostSatang (schema refine); SUPPLIER outflow |
 | Inventory adjustments (+ reasons) | §10.4 | Integration tested | `createAdjustment`; DAMAGED + negative → DAMAGE movement; else ADJUSTMENT signed delta |
-| Transaction ledger UI (shows the calculation) | §11 | Integration tested (API) | `getLedger`: openingBalance + running balance + currentStock; UI = Phase 4 |
+| Transaction ledger UI (shows the calculation) | §11 | Implemented (UI unverified) | `LedgerDrawer`: opening balance + per-row running balance + current stock; voided rows struck through; paginated. API path integration tested |
 | Audit log | §20 | Integration tested | CREATE / VOID / SETTINGS_CHANGE / COST_BASIS_RESET rows asserted |
 | Weighted-average costing + COGS (round-half-up) | §9.2, §9.3 | Unit + integration tested | micro-THB avg; `costStep` books COGS; §9.3 golden (2,133,333 satang) |
 | Owner-entered cost: customer return + positive adjustment | §9.2, §10.3, §10.4 | Integration tested | schema refine enforces unitCostSatang; prefill-from-sale-COGS = Phase 4 UI |
 | Cost-basis reset (`qty < 0`) + void-purchase replay | §9.2 | Unit + integration tested | strict `qty.lt(0)` reset branch; `costBasisResets` index list; void → `recomputeStockState` replay |
 | Estimated gross profit / margin reporting | §9.5 | Not started | |
-| Dashboard KPI cards | §18 | Not started | |
-| Master stock table (search / filter / sort / paginate) | §19 | Not started | |
+| Dashboard KPI cards | §18 | Integration tested (API) + UI implemented | `GET /api/dashboard` SQL-aggregated, cross-checked vs raw SQL; `DashboardPage` renders all 10 §18.1 cards with dynamic FY labels. UI not browser-verified |
+| Master stock table (search / filter / sort / paginate) | §19 | Integration tested (API) + UI implemented | `GET /api/products` + per-row `fyView` + dynamic labels; `StockPage` search / status+category filters / low+oversold toggles / sortable headers / server pagination / row action buttons. UI not browser-verified |
+| Transaction UI drawers (Purchase / Sale / Return / Adjust) | §19.3 | Implemented (UI unverified) | `TransactionDrawer`: live current stock, auto totals, backdate warning + reason, projected balance, oversell warning. Return prefill-from-sale-COGS deferred to Phase 5 |
 | Monthly / low-stock / oversold reports + charts | §21 (brief), Phase 5 | Not started | |
 | Excel/CSV import pipeline (parse→sanitize→validate→preview→commit) | §13 | Not started | |
 | Import atomicity (all-or-nothing) + partial opt-in | §13.3, §13.4 | Not started | |
@@ -98,7 +100,8 @@ web 1). Autonomous build of Phases 1–7 in progress; commit per phase.
 | Product master + lookups (server) | 11 | 11 | 0 | Integration tested |
 | Inventory ledger (server) | 10 | 10 | 0 | Integration tested |
 | Concurrency (server, serialized under PGlite) | 3 | 3 | 0 | Integration tested (multi-client deferred to real Postgres) |
-| Web (scaffold + products page) | 1 | 1 | 0 | Component tested |
+| Dashboard + master-table 68/69 view (server) | 4 | 4 | 0 | Integration tested (raw-SQL cross-check) |
+| Web (shell + dashboard + master table nav) | 1 | 1 | 0 | Component tested (drawers not browser-verified) |
 | Import | 0 | 0 | 0 | Not started |
 | Financial | 0 | 0 | 0 | Not started (costing covered under ledger; reports pending) |
 | Recovery | 0 | 0 | 0 | Not started (needs real Postgres) |
@@ -115,7 +118,12 @@ web 1). Autonomous build of Phases 1–7 in progress; commit per phase.
   read-side 68/69 view + dynamic labels. Scheduled for Phase 5.
 - Financial **reports** (monthly / low-stock / oversold endpoints + Recharts) not started;
   weighted-average costing + COGS itself is done and tested under the ledger suite.
-- Dashboard, master-table UI, transaction drawers, ledger UI — Phase 4, not started.
+- Phase 4 UI (dashboard, master table, 4 transaction drawers, ledger drawer, edit-product
+  drawer) is **built and typechecks + a render smoke test passes, but has not been run in
+  a real browser** — no display in this environment. Golden-path + edge-case click-through
+  still owed (drawer submit flows, filter combinations, pagination boundaries).
+- Customer-return **Unit Cost prefill from the linked sale's COGS** (spec §19.3) is not
+  wired — needs a sale-lookup endpoint; moved to Phase 5.
 - Offline `PREVENT` overselling is enforceable only at sync time (design constraint,
   `PROJECT_SPEC.md` §6.1, §28.2) — not a defect; must be tested as specified.
 
@@ -131,4 +139,5 @@ web 1). Autonomous build of Phases 1–7 in progress; commit per phase.
 | 2026-08-29 | Env check: no Docker / no Postgres. Spec → v0.3: dev/test DB = PGlite (embedded PG16). Owner OK'd autonomous build of Phases 1–7. |
 | 2026-08-29 | **Phase 1 done** (commit 07c6fdf). Workspaces, PGlite client + Database interface, SQL migrations 0001–0003 + runner, Fastify + pino + error mapper, /api/health, web scaffold, CI. typecheck/lint/test green. Known limitation: true multi-client concurrency (spec §14.2) needs real Postgres. |
 | 2026-08-29 | **Phase 2 done** (commit 7269c20). shared: cleanData (sku/number/date) + money (satang/micro) + format + domain + zod schemas, 99 unit tests. server: product master CRUD + SKU UNIQUE + UPSERT + categories + units + audit, 18 integration tests. web: minimal products page. Fixed decimal.js import (named `{ Decimal }`, not default) under verbatimModuleSyntax. |
-| 2026-08-29 | **Phase 3 done** (commit 92a5d09). shared: `replayLedger` split into pure `costStep`; transaction zod schemas. server: `services/ledger` (postMovementTx single write path, recomputeStockState, voidDocumentTx, getLedger, currentFyView), `services/documents` (createPurchase/Sale/Return/Adjustment/Opening + voidDocument, all via `runIdempotent`), `services/idempotency` (atomic work + processed_requests), `services/periods` / `services/settings` (+ route) / `services/backdate`, `db/lock` (advisory xact lock), PGlite date-OID parser. Routes: transactions / periods / settings + products ledger & stock. Tests: ledger 10, concurrency 3 (serialized under PGlite, multi-client deferred). 137 green total. |
+| 2026-08-29 | **Phase 3 done** (commit 92a5d09). shared: `replayLedger` split into pure `costStep`; transaction zod schemas. server: `services/ledger` (postMovementTx single write path, recomputeStockState, voidDocumentTx, getLedger, currentFyView), `services/documents` (createPurchase/Sale/Return/Adjustment/Opening + voidDocument, all via `runIdempotent`), `services/idempotency` (atomic work + processed_requests), `services/periods` / `services/settings` (+ route) / `services/backdate`, `db/lock` (advisory xact lock), PGlite date-OID parser. Routes: transactions / periods / settings + products ledger & stock. Tests: ledger 10, concurrency 3 (serialized under PGlite, multi-client deferred). 137 green total. Docs recorded in commit 0556cfc. |
+| 2026-08-29 | **Phase 4 done.** server: `services/dashboard` + `GET /api/dashboard` (§18.1, SQL-aggregated); `listProducts` extended with per-row `fyView` (68/69 + variance via LATERAL) and dynamic `labels`. web: rebuilt shell (`App` nav dashboard/stock), `DashboardPage` (10 KPI cards), `StockPage` (search / status+category filter / low+oversold toggle / sortable headers / server pagination / row actions), `Drawer` + `TransactionDrawer` (purchase/sale/return/adjust: live stock, auto totals, backdate warning, oversell warning) + `LedgerDrawer` + `EditProductDrawer`; `api.postTxn` sends a fresh Idempotency-Key; `lib/fmt` wraps shared formatters. Tests: dashboard 4 (raw-SQL cross-check + fyView + filters), web smoke updated. 141 green. UI not browser-verified (no display). |

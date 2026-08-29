@@ -18,10 +18,17 @@ export class ApiRequestError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  extraHeaders?: Record<string, string>,
+): Promise<T> {
+  const headers: Record<string, string> = { ...extraHeaders };
+  if (body !== undefined) headers['content-type'] = 'application/json';
   const res = await fetch(`/api${path}`, {
     method,
-    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    headers: Object.keys(headers).length ? headers : undefined,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (res.status === 204) return undefined as T;
@@ -42,4 +49,7 @@ export const api = {
   post: <T>(path: string, body: unknown) => request<T>('POST', path, body),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
   del: (path: string) => request<void>('DELETE', path),
+  /** POST a transaction with a fresh Idempotency-Key (spec §14.1). */
+  postTxn: <T>(path: string, body: unknown) =>
+    request<T>('POST', path, body, { 'idempotency-key': crypto.randomUUID() }),
 };

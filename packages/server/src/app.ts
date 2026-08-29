@@ -6,6 +6,7 @@ import { getDb } from './db/client.js';
 import { currentSchemaVersion } from './db/migrate.js';
 import { registerErrorHandler } from './errors/mapper.js';
 import { logger } from './logger.js';
+import { dashboardRoutes } from './routes/dashboard.js';
 import { healthRoutes } from './routes/health.js';
 import { lookupRoutes } from './routes/lookups.js';
 import { periodRoutes } from './routes/periods.js';
@@ -39,6 +40,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   registerErrorHandler(app);
 
   await app.register(healthRoutes, { prefix: '/api' });
+  await app.register(dashboardRoutes, { prefix: '/api' });
   await app.register(productRoutes, { prefix: '/api' });
   await app.register(lookupRoutes, { prefix: '/api' });
   await app.register(transactionRoutes, { prefix: '/api' });

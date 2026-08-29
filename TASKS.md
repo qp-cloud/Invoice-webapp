@@ -82,20 +82,26 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done (add date)
       400 + audit; idempotency replay + different-body 422; §14.2 A/B concurrency both
       modes (serialized under PGlite — multi-client deferred to real Postgres).
 
-## Phase 4 — Dashboard & master stock table  ◄ HERE NOW
-- [ ] `GET /api/dashboard` — pre-aggregated KPI payload (§18.1).
-- [ ] Master table: columns per §19.1; search (SKU, name); filters (category, status,
-      low-stock, oversold); sortable; **server-side pagination**.
-- [ ] Status badges + oversold sub-line + Missing Balance.
-- [ ] Ledger view showing the running-balance calculation (§11).
-- [ ] Purchase / Sale drawers: live current stock, auto totals, backdate warning.
-- [ ] Customer Return drawer (required Unit Cost, prefilled from linked sale COGS) and
-      Adjust Stock drawer (Unit Cost required when delta > 0); dynamic 68/69 column
-      labels from `current_fiscal_year`.
-      **Verify:** dashboard numbers match a raw-SQL cross-check on the seed; pagination
-      ordering stable; filters correct against the mock dataset.
+## Phase 4 — Dashboard & master stock table ✅ 2026-08-29 (commit __PENDING__)
+- [x] `GET /api/dashboard` — pre-aggregated KPI payload (§18.1), `services/dashboard.ts`.
+- [x] Master table: columns per §19.1; search (SKU, name); filters (category, status,
+      low-stock, oversold); sortable headers; **server-side pagination** (page size 20).
+      `GET /api/products` now also returns per-row `fyView` + dynamic `labels`.
+- [x] Status badges (🟢/🟡/🔴) + oversold sub-line + Missing Balance.
+- [x] Ledger drawer showing opening balance + running-balance calculation (§11),
+      voided rows struck through, paginated.
+- [x] Purchase / Sale drawers: live current stock, auto totals, backdate warning,
+      projected balance, oversell warning on Sale.
+- [x] Customer Return drawer (required Unit Cost) and Adjust Stock drawer (Unit Cost
+      required when delta > 0, reason codes); dynamic 68/69 column labels from
+      `current_fiscal_year`. **Return prefill from linked sale COGS deferred to Phase 5
+      (needs a sale-lookup endpoint).**
+      **Verified (automated):** dashboard figures cross-checked against raw SQL on a
+      built dataset; `fyView` + labels asserted; oversold-only / low-stock-only filters
+      correct against the mock dataset. **Not verified:** drawers in a real browser
+      (no display in this environment).
 
-## Phase 5 — Financial reporting
+## Phase 5 — Financial reporting  ◄ HERE NOW
 - [ ] Weighted-average costing wired into every costed movement; `avg_cost_micro`.
 - [ ] `cogs_satang` computed + stored on sale post (round-half-up).
 - [ ] Cost-basis reset rule for `qty_on_hand ≤ 0`; `COST_BASIS_RESET` audit.

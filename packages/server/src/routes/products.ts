@@ -25,7 +25,8 @@ const ledgerQuery = z.object({
 export async function productRoutes(app: FastifyInstance): Promise<void> {
   app.get('/products', async (req) => {
     const query = listProductsQuerySchema.parse(req.query);
-    return listProducts(app.db, query);
+    const cfy = await getCurrentFiscalYear(app.db);
+    return listProducts(app.db, query, cfy);
   });
 
   app.post('/products', async (req, reply) => {
