@@ -7,11 +7,11 @@
 > "Implemented" alone never means "working" — it means code exists and type-checks.
 > Never record a level higher than the tests that were actually executed.
 
-**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phases 1–7 complete**
-(commits 07c6fdf, 7269c20, 92a5d09, 0556cfc, 0ce3265, 76d0ae7, a880b21 + Phase 7).
-168 tests green (shared 105, server 58, web 5). Phase 4–7 UI not verified in a real
-browser (no display in this env). Autonomous build of Phases 1–7 **done** — Phase 8
-(backup) is blocked on real Postgres + open questions #15/#16; Phase 9 remains.
+**Last updated:** 2026-08-29 — Spec v0.3. **Phases 1–8 complete** (P8: local logical
+backup only — cloud + Task Scheduler deferred, open Q #15/#16). A real PostgreSQL 17
+backend is now available for tests via `embedded-postgres` (`npm run test:pg`). 176
+tests green (shared 105, server 66, web 5); the 66 server tests also pass under
+`TEST_PG=1` against real Postgres. Phase 4–8 UI not browser-verified. Phase 9 remains.
 
 ---
 
@@ -73,19 +73,19 @@ browser (no display in this env). Autonomous build of Phases 1–7 **done** — 
 | Invalid-row export | §13.6 | Integration tested | `GET /imports/:id/invalid-rows.xlsx` — source layout + trailing `_error` column |
 | Exports (all report kinds) | §14.3, brief §27 | Integration tested | `GET /api/exports/:kind.xlsx` — current-stock / ledger / purchases / sales / monthly-report / low-stock / oversold |
 | Idempotency middleware (`processed_requests`) | §14.1 | Integration tested | `runIdempotent` atomic (work + processed_requests in one tx); replay `_replayed:true`; different body → 422; doc tables carry `idempotency_key UNIQUE` |
-| Concurrency safety (per-product lock, no lost updates) | §14.2 | Integration tested (serialized) | `pg_advisory_xact_lock` + `SELECT … FOR UPDATE`; A/B 80/50 ALLOW + PREVENT + parallel-idempotency pass under PGlite. **Genuine multi-client "no lost update" deferred to real Postgres** |
+| Concurrency safety (per-product lock, no lost updates) | §14.2 | Integration tested (real Postgres) | `pg_advisory_xact_lock` per product + per-idempotency-key + `SELECT … FOR UPDATE`. A/B 80/50 ALLOW/PREVENT + 5× parallel-same-key all pass under `TEST_PG=1` with a real connection pool. Real parallelism exposed + fixed an idempotency race PGlite had masked |
 | Offline cache + outbound queue (Dexie) | §12.2 | Unit tested | `web/src/offline/db.ts` queue store with all §12.2 fields + `hasStorage()` guard; `TransactionDrawer` enqueues when `!isOnline()` |
 | Sync engine (FIFO, retry-no-dup, conflict isolation) | §12.2–§12.3 | Unit + integration tested | client `engine.flush` FIFO + per-item apply + network-park + retry; server `POST /api/sync` array-order, typed 4xx → CONFLICT + continue, 5xx → abort; same-key replay creates nothing |
 | Sync conflict UI | §12.3 | Implemented (UI unverified) | `SyncPage`: PENDING/CONFLICT/FAILED list + retry / discard + "ซิงค์เดี๋ยวนี้"; nav badge + offline banner. `editAndRetry` in engine; discard-with-audit is a server follow-up |
-| Backup pipeline (dump→manifest→compress→encrypt→hash→verify) | §16.3 | Not started | encrypt locally before any cloud |
-| Backup scheduling (Task Scheduler + startup catch-up) | §16.2 | Not started | Windows Task Scheduler primary |
-| Backup retention (never delete last copy) | §16.3, §16.6 | Not started | |
-| Cloud upload (S3-compatible, verify + retry, 3-state status) | §16.3, §16.4 | Not started | provider TBD (§26.2 #15) |
-| Secrets separation (PIN / passphrase / cloud creds) | §16.5 | Not started | OS credential store / DPAPI |
-| Restore (guarded / passphrase / pre-restore backup / cross-migration) | §16.7 | Not started | |
-| Disaster-recovery runbook + drills | §16, brief §33 | Not started | |
-| Database constraints (UNIQUE / CHECK ≥ 0 / FK) | §14, brief §34 | Not started | |
-| Performance / scale (10k products, 100k movements) | §21 | Not started | |
+| Backup pipeline (dump→manifest→compress→encrypt→hash→verify) | §16.3 | Integration tested (both backends) | `services/backup.ts` logical dump (no `pg_dump`) → manifest → gzip → AES-256-GCM (scrypt) → sha256 → verify. `backup.test.ts` |
+| Backup scheduling (Task Scheduler + startup catch-up) | §16.2 | Partial | `backupOverdue()` helper for a startup check; Windows Task Scheduler `.xml` + install + missing-task warning deferred (open Q #16) |
+| Backup retention (never delete last copy) | §16.3, §16.6 | Integration tested | `deleteBackup` → `LAST_REMAINING_COPY` when it would leave zero verified copies. Full 14/8/12 rotation not built |
+| Cloud upload (S3-compatible, verify + retry, 3-state status) | §16.3, §16.4 | Not started | provider TBD (open Q #15); `cloud_status` column stays `NOT_ATTEMPTED` |
+| Secrets separation (PIN / passphrase / cloud creds) | §16.5 | Partial | passphrase from request / `BACKUP_PASSPHRASE` env, never in DB, redacted in logs. OS credential store / DPAPI = deployment packaging |
+| Restore (guarded / passphrase / pre-restore backup / cross-migration) | §16.7 | Integration tested (both backends) | `restoreBackup`: confirm phrase + `BAD_PASSPHRASE` + `BACKUP_INTEGRITY_FAILED` + `SCHEMA_NEWER_THAN_APP` + PRE_RESTORE auto-backup + one-tx swap + `_migrations` top-up + `RESTORE` audit |
+| Disaster-recovery runbook + drills | §16, brief §33 | Not started | `BACKUP_RECOVERY.md` still describes the `pg_dump` design; needs a rewrite for the logical-dump format |
+| Database constraints (UNIQUE / CHECK ≥ 0 / FK) | §14, brief §34 | Integration tested (real Postgres) | full schema now also verified on real PG17 via `TEST_PG=1` — CHECK / partial-unique / FK / GENERATED IDENTITY all enforced |
+| Performance / scale (10k products, 100k movements) | §21 | Not started | Phase 9 — stress seed + profiling on embedded PG |
 | UI/UX (Thai-first, number/date formatting, responsive) | §19.4 | Not started | |
 | Stress / corruption / concurrency / recovery hardening | Phase 9 | Not started | |
 
@@ -108,19 +108,29 @@ browser (no display in this env). Autonomous build of Phases 1–7 **done** — 
 | Excel/CSV import + exports (server) | 8 | 8 | 0 | Integration tested |
 | Offline sync batch (server) | 5 | 5 | 0 | Integration tested |
 | Offline sync engine (web, fake-indexeddb) | 4 | 4 | 0 | Unit tested |
-| Web (shell + dashboard + master table + reports + import + sync nav) | 1 | 1 | 0 | Component tested (drawers + charts + import + sync UI not browser-verified) |
-| Recovery | 0 | 0 | 0 | Not started (needs real Postgres) |
+| Backup + restore (server, both backends) | 8 | 8 | 0 | Integration tested |
+| Web (shell + dashboard/stock/reports/import/sync/backup nav) | 1 | 1 | 0 | Component tested (all page UIs not browser-verified) |
 
 ---
 
 ## Known limitations / unverified areas
 
-- **Concurrency (spec §14.2):** the "no lost update" scenarios run SERIALIZED under PGlite
-  (single connection). Guard + idempotency logic verified; genuine multi-client
-  contention deferred to a real-Postgres run (`TEST_PG_URL`, TESTING.md §3.5).
-- **Fiscal-year rollover backup guard** stands in for the real backup subsystem: it
-  passes on `backupConfirmed: true` or a fresh `settings.last_backup_at`. Phase 8 must
-  wire a real `pg_dump` success into that timestamp.
+- **Concurrency (spec §14.2):** now verified against real PostgreSQL — `npm run test:pg`
+  boots an `embedded-postgres` instance and runs the whole server suite with a real
+  connection pool. This is how the idempotency advisory-lock race was found and fixed.
+  Default `npm test` still uses PGlite for speed.
+- **Backup uses a logical dump, not `pg_dump`** — the trimmed `@embedded-postgres` binary
+  bundle ships only `postgres`/`initdb`/`pg_ctl`. The logical dump (schema from the
+  migration files, data via `SELECT *`) is driver-agnostic and fully tested, but it is
+  not a byte-for-byte `pg_dump` artifact: it captures the 16 app tables + `_migrations`,
+  not roles, extensions, or `backups` itself.
+- **Cloud backup + Windows Task Scheduler are not built** (open Q #15 provider, #16
+  install method). `cloud_status` stays `NOT_ATTEMPTED`; there is a `backupOverdue()`
+  helper but nothing schedules backups yet. The fiscal-year-roll `BACKUP_REQUIRED` guard
+  is now satisfied for real by a successful `createBackup` (it stamps
+  `settings.last_backup_at`).
+- `BACKUP_RECOVERY.md` still documents the original `pg_dump` design and needs a rewrite
+  for the logical-dump format.
 - Phase 4/5 UI (dashboard, master table, 4 transaction drawers, ledger drawer,
   edit-product drawer, reports page + Recharts) is **built and typechecks + `vite build`
   succeeds + a render smoke test passes, but has not been run in a real browser** — no
@@ -131,8 +141,8 @@ browser (no display in this env). Autonomous build of Phases 1–7 **done** — 
   queries), and `xlsx` 0.18.5 (prototype-pollution / ReDoS advisories — the registry
   build; SheetJS's fix is only on their CDN, unreachable here). `xlsx` parses only
   owner-supplied files server-side. Revisit all three in the Phase 9 security review.
-- Import: the 10,000-row single-transaction target (§13.3) is **not** exercised — tests
-  use small sheets because PGlite is slow; moved to the Phase 9 stress pass. A genuine
+- Import: the 10,000-row single-transaction target (§13.3) is **not** yet exercised —
+  moved to the Phase 9 stress pass (now runnable against real Postgres). A genuine
   mid-write rollback test needs deliberate fault injection; the pre-write 422 path
   already proves "invalid file writes nothing".
 - Customer-return **Unit Cost prefill from the linked sale's COGS** (spec §19.3) still not
@@ -162,6 +172,8 @@ browser (no display in this env). Autonomous build of Phases 1–7 **done** — 
 | 2026-08-29 | **Phase 2 done** (commit 7269c20). shared: cleanData (sku/number/date) + money (satang/micro) + format + domain + zod schemas, 99 unit tests. server: product master CRUD + SKU UNIQUE + UPSERT + categories + units + audit, 18 integration tests. web: minimal products page. Fixed decimal.js import (named `{ Decimal }`, not default) under verbatimModuleSyntax. |
 | 2026-08-29 | **Phase 3 done** (commit 92a5d09). shared: `replayLedger` split into pure `costStep`; transaction zod schemas. server: `services/ledger` (postMovementTx single write path, recomputeStockState, voidDocumentTx, getLedger, currentFyView), `services/documents` (createPurchase/Sale/Return/Adjustment/Opening + voidDocument, all via `runIdempotent`), `services/idempotency` (atomic work + processed_requests), `services/periods` / `services/settings` (+ route) / `services/backdate`, `db/lock` (advisory xact lock), PGlite date-OID parser. Routes: transactions / periods / settings + products ledger & stock. Tests: ledger 10, concurrency 3 (serialized under PGlite, multi-client deferred). 137 green total. Docs recorded in commit 0556cfc. |
 | 2026-08-29 | **Phase 4 done** (commit 0ce3265). server: `services/dashboard` + `GET /api/dashboard` (§18.1, SQL-aggregated); `listProducts` extended with per-row `fyView` (68/69 + variance via LATERAL) and dynamic `labels`. web: rebuilt shell (`App` nav dashboard/stock), `DashboardPage` (10 KPI cards), `StockPage` (search / status+category filter / low+oversold toggle / sortable headers / server pagination / row actions), `Drawer` + `TransactionDrawer` (purchase/sale/return/adjust: live stock, auto totals, backdate warning, oversell warning) + `LedgerDrawer` + `EditProductDrawer`; `api.postTxn` sends a fresh Idempotency-Key; `lib/fmt` wraps shared formatters. Tests: dashboard 4 (raw-SQL cross-check + fyView + filters), web smoke updated. 141 green. UI not browser-verified (no display). |
+| 2026-08-29 | **Test infra + idempotency fix.** `db/pg.ts` node-postgres adapter (same `Database` interface); `test/globalSetup.ts` boots one `embedded-postgres` PG17 under `TEST_PG=1`, `makeTestDb()` provisions a fresh DB per file; `npm run test:pg`. Running with real parallel clients exposed an idempotency race PGlite had hidden (5 concurrent same-key → 4× 409 instead of replay); fixed by a per-key `pg_advisory_xact_lock` + re-check inside `runIdempotent`'s transaction. 58 server tests pass on both backends. |
+| 2026-08-29 | **Phase 8 done** (local backup only). `services/backup.ts`: driver-agnostic **logical** dump (schema from migration files, data via `SELECT *`) — no `pg_dump` in the embedded bundle. Pipeline dump → manifest → gzip → AES-256-GCM (scrypt) → sha256 → verify. `restoreBackup` guarded (confirm phrase, `BAD_PASSPHRASE`, `BACKUP_INTEGRITY_FAILED`, `SCHEMA_NEWER_THAN_APP`, PRE_RESTORE auto-backup, one-tx DELETE-all→INSERT-all, `_migrations` top-up). `deleteBackup` → `LAST_REMAINING_COPY`. `settings.last_backup_at` stamped → real FY-roll guard. Routes `/api/backups*`; web `BackupPage` + nav tab. `backup.test.ts` 8, green on PGlite + real PG. Deferred: cloud upload (#15), Task Scheduler (#16), CLI, full retention rotation, `BACKUP_RECOVERY.md` rewrite. |
 | 2026-08-29 | **Phase 7 done.** server: `services/sync` + `POST /api/sync` (array-order batch, typed 4xx → CONFLICT + continue, 5xx → abort; allowed endpoints purchases/sales/returns/adjustments) + `GET /api/sync/state`. web: `dexie` + `fake-indexeddb` (dev); `offline/db.ts` (queue store, §12.2 fields) + `offline/engine.ts` (`enqueue` reused idempotency key, `flush` FIFO + per-item apply + network-park + `retryItem`/`editAndRetry`/`discardItem`) + `offline/store.ts` (zustand + online/offline listeners + initial flush); `TransactionDrawer` enqueues when offline; `SyncPage` conflict panel + nav badge + offline banner; `initOffline()` in `main.tsx`. Tests: `sync.test.ts` 5, `engine.test.ts` 4. 168 green. Autonomous Phases 1–7 complete. |
 | 2026-08-29 | **Phase 6 done.** server: `@fastify/multipart` + `xlsx`; `services/import/` (headers alias resolver, workbook parse, per-row `cleanData` sanitize, file+row sha256, `pipeline.createImport` preview, `commit.commitImport` one-tx idempotent apply with §13.8 Master Stock re-import effect); routes `POST /imports` (multipart) / `GET /imports/:id` / `/commit` / `/discard` / `/invalid-rows.xlsx`; `services/exports` + `GET /api/exports/:kind.xlsx` (7 kinds). web: `ImportPage` (preview table + mode radios + dup-file ack + result + export buttons) + nav tab. Tests: `import.test.ts` 8. 159 green. UI not browser-verified. Deferred: 10k-row stress + mid-write rollback fault injection → Phase 9. |
 | 2026-08-29 | **Phase 5 done.** server: `services/fiscalYear` + `POST /api/fiscal-year/roll` (confirm + all-12-CLOSED + backup guard + advance + open new periods + `ROLL_FISCAL_YEAR` audit, no movement rows touched); Stock 68 reworked to a derived ledger cutoff (`type='OPENING' OR occurred_on < CFY start`) in `currentFyView` / dashboard / `listProducts` so a rollover yields the prior-year close with no snapshot; `services/reports` + `GET /api/reports/monthly?ym=` / `/low-stock` / `/oversold` (SQL-aggregated, margin divide-by-zero guarded). web: `ReportsPage` (recharts bar chart + monthly table w/ totals footer + low-stock + oversold lists + month picker) + "รายงาน" nav tab; added `recharts` dep. Tests: `fiscalYear` 4, `reports` 4, `financial` 2 (void-purchase replay + cost-basis reset). 151 green. `vite build` OK. UI not browser-verified. |

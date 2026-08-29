@@ -131,3 +131,23 @@ export interface OversoldRow {
   qtyOnHand: string;
   missingBalance: string;
 }
+
+export interface Backup {
+  id: string;
+  createdAt: string;
+  kind: 'AUTO' | 'MANUAL' | 'PRE_RESTORE';
+  sizeBytes: number;
+  schemaVersion: string;
+  appVersion: string;
+  pgVersion: string;
+  localStatus: string;
+  cloudStatus: string;
+  verifiedAt: string | null;
+  rowCounts: Record<string, number>;
+}
+
+export interface BackupStatus {
+  lastBackupAt: string | null;
+  verifiedCount: number;
+  latest: Backup | null;
+}

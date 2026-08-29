@@ -15,11 +15,17 @@ const schema = z.object({
    */
   PGLITE_DATA_DIR: z.string().default('memory'),
   /**
-   * If set, use a real PostgreSQL server instead of PGlite (production, or
-   * concurrency tests). Not wired for query execution until Phase 8/prod hardening,
-   * but the value is surfaced so code paths can branch.
+   * If set, use a real PostgreSQL server (via the node-postgres adapter) instead of
+   * PGlite — production, or the `TEST_PG=1` concurrency/stress runs.
    */
   DATABASE_URL: z.string().optional(),
+  /** Directory for local backup artifacts (spec §16). */
+  BACKUP_DIR: z.string().default('./backups'),
+  /**
+   * Default backup passphrase. A request may override it per call; it is never stored
+   * in the DB and is redacted from logs (spec §16.5). Min length enforced at use.
+   */
+  BACKUP_PASSPHRASE: z.string().optional(),
 });
 
 export type Config = z.infer<typeof schema>;

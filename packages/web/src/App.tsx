@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useOffline } from './offline/store.js';
+import { BackupPage } from './pages/BackupPage.js';
 import { DashboardPage } from './pages/DashboardPage.js';
 import { ImportPage } from './pages/ImportPage.js';
 import { ReportsPage } from './pages/ReportsPage.js';
 import { StockPage } from './pages/StockPage.js';
 import { SyncPage } from './pages/SyncPage.js';
 
-type View = 'dashboard' | 'stock' | 'reports' | 'import' | 'sync';
+type View = 'dashboard' | 'stock' | 'reports' | 'import' | 'sync' | 'backup';
 
 export function App(): JSX.Element {
   const [view, setView] = useState<View>('dashboard');
@@ -37,6 +38,9 @@ export function App(): JSX.Element {
         <NavButton active={view === 'sync'} onClick={() => setView('sync')}>
           ซิงค์{queued > 0 ? ` (${queued})` : ''}
         </NavButton>
+        <NavButton active={view === 'backup'} onClick={() => setView('backup')}>
+          สำรองข้อมูล
+        </NavButton>
         <span className="ml-auto text-xs text-slate-500">
           {online ? '🟢 ออนไลน์' : '🔴 ออฟไลน์'}
         </span>
@@ -51,6 +55,7 @@ export function App(): JSX.Element {
       {view === 'reports' && <ReportsPage />}
       {view === 'import' && <ImportPage />}
       {view === 'sync' && <SyncPage />}
+      {view === 'backup' && <BackupPage />}
     </div>
   );
 }

@@ -202,37 +202,48 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done (add date)
       in a real browser with actual connectivity toggling; exponential-backoff timing
       (retryCount is tracked; the delay schedule is the caller's to apply).
 
-## Phase 8 — Backup & recovery  ◄ HERE NOW
-- [ ] Backup pipeline (§16.3): `pg_dump` (custom format) → `manifest.json` (app/schema/pg
-      versions, per-table row counts, dump sha256) → compress → **encrypt locally**
-      (AES-256-GCM / age, backup passphrase) → sha256 of the artifact → verify
-      (re-read + test-decrypt + `pg_restore --list`).
-- [ ] `inventory-backup` CLI (callable with app UI closed).
-- [ ] Windows Task Scheduler task definition (`.xml`) for daily 02:00; app registers it
-      or the owner imports it (open Q #16); app startup catch-up check.
-- [ ] App detects + warns when the scheduled task is missing / overdue.
-- [ ] Retention (14 daily / 8 weekly / 12 monthly) that **never deletes the last copy**.
-- [ ] Three-state status model: `LOCAL_BACKUP_SUCCESS` / `CLOUD_UPLOAD_SUCCESS` /
-      `CLOUD_UPLOAD_FAILED`; persistent warning until a failed upload succeeds.
-- [ ] Optional S3-compatible cloud upload (open Q #15 for provider): PUT encrypted
-      artifact → verify (re-download / HEAD + checksum) → retry on failure. Never upload
-      plaintext.
-- [ ] Secrets stored separately: app PIN hash / backup passphrase / cloud credentials
-      (OS credential store / DPAPI), never in the DB, never logged.
-- [ ] Endpoints: `POST /api/backups`, `GET /api/backups`, `GET /api/backups/status`,
-      `POST /api/backups/:id/upload`, `DELETE /api/backups/:id` (block last copy),
-      `GET /api/backups/:id/download`; UI status card (§16.4).
-- [ ] Guarded restore: confirmation phrase, requires backup passphrase, pre-restore
-      auto-backup, sha256 check before decrypt, forward-migration on restore, audit
-      entry; refuse newer-schema backups.
-- [ ] `BACKUP_RECOVERY.md` runbook (incl. cloud + Task Scheduler setup) + DR drill
-      scripts for every brief-§33 scenario.
-      **Verify:** backup → drop/replace DB → restore → golden query matches; tampered
-      backup refused on sha256; cross-migration restore succeeds; newer-schema backup
-      refused; simulated cloud-upload failure surfaces + retries; retention keeps ≥ 1
-      copy; missing Task Scheduler task raises a warning.
+## Phase 8 — Backup & recovery ✅ 2026-08-29 (commit __PENDING8__) — cloud + scheduler deferred
+- [x] Backup pipeline (`services/backup.ts`): **logical dump** (schema from the migration
+      files, data via `SELECT * FROM <table>`) instead of `pg_dump` — the trimmed
+      `@embedded-postgres` bundle has no `pg_dump`, and a logical dump is driver-agnostic
+      (runs on PGlite and real Postgres). manifest (app / schema / pg version, per-table
+      row counts, dump sha256) → gzip → **AES-256-GCM** (scrypt-derived key, per-artifact
+      salt + iv + auth tag) → sha256 of the artifact → verify (re-read, re-hash, decrypt,
+      re-parse, compare row counts). `movements.seq` (GENERATED ALWAYS) is dumped in seq
+      order and omitted so the identity regenerates on restore.
+- [x] Retention floor: `deleteBackup` refuses to remove the only remaining verified copy
+      → `LAST_REMAINING_COPY`. (Full 14/8/12 daily/weekly/monthly rotation not built —
+      `retention_class` column is there; a rotation job is a follow-up.)
+- [x] Status model: `local_status` = `LOCAL_BACKUP_SUCCESS` / `LOCAL_BACKUP_FAILED`;
+      `cloud_status` stays `NOT_ATTEMPTED`. `settings.last_backup_at` stamped on every
+      successful backup and after a restore — this is what the fiscal-year-roll
+      `BACKUP_REQUIRED` guard now checks for real.
+- [x] Secrets: passphrase from the request or `BACKUP_PASSPHRASE` env, never stored in
+      the DB, redacted in logs. (OS credential store / DPAPI integration is deployment
+      packaging, out of scope here.)
+- [x] Endpoints: `POST /api/backups`, `GET /api/backups`, `GET /api/backups/status`,
+      `DELETE /api/backups/:id` (blocks last copy), `GET /api/backups/:id/download`,
+      `POST /api/backups/:id/restore`. Web `BackupPage` status card + list + backup-now +
+      guarded restore + delete + download; new "สำรองข้อมูล" nav tab.
+- [x] Guarded restore (`restoreBackup`): `confirm: "RESTORE"` phrase, passphrase must
+      decrypt (else `BAD_PASSPHRASE`), artifact sha256 must match + dump digest must
+      match (else `BACKUP_INTEGRITY_FAILED`), backup schema not newer than the app
+      (else `SCHEMA_NEWER_THAN_APP`), a `PRE_RESTORE` auto-backup taken first, the data
+      swap (DELETE all in reverse FK order → INSERT all in forward order) in one
+      transaction, `_migrations` topped up to the current set, `RESTORE` audit row.
+      **Verified (automated, both PGlite + `TEST_PG=1`):** `backup.test.ts` (8) — backup →
+      wipe movements/sales/stock_state → restore → stock golden query matches + a fresh
+      movement still posts; `last_backup_at` set + overdue flag clears; tampered artifact
+      → `BACKUP_INTEGRITY_FAILED`; wrong passphrase → `BAD_PASSPHRASE`; newer schema →
+      `SCHEMA_NEWER_THAN_APP`; missing confirm phrase → `VALIDATION_FAILED`; delete last
+      verified copy → `LAST_REMAINING_COPY`; HTTP `POST /api/backups` + `GET
+      /api/backups/status`.
+- [ ] **Deferred (blocked / out of scope):** S3-compatible cloud upload (open Q #15 —
+      no provider chosen), Windows Task Scheduler `.xml` + install + missing-task warning
+      (open Q #16), `inventory-backup` standalone CLI, full retention rotation, the
+      `BACKUP_RECOVERY.md` runbook refresh for the logical-dump format.
 
-## Phase 9 — Production hardening
+## Phase 9 — Production hardening  ◄ HERE NOW
 - [ ] `scripts/stress-seed.ts` — 10k products, 100k movements.
 - [ ] Load + pagination profiling; add/adjust indexes per findings.
 - [ ] Concurrency stress (N parallel sales; no lost updates).

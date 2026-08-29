@@ -7,6 +7,7 @@ import { getDb } from './db/client.js';
 import { currentSchemaVersion } from './db/migrate.js';
 import { registerErrorHandler } from './errors/mapper.js';
 import { logger } from './logger.js';
+import { backupRoutes } from './routes/backups.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { exportRoutes } from './routes/exports.js';
 import { fiscalYearActionRoutes } from './routes/fiscalYear.js';
@@ -57,6 +58,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(importRoutes, { prefix: '/api' });
   await app.register(exportRoutes, { prefix: '/api' });
   await app.register(syncRoutes, { prefix: '/api' });
+  await app.register(backupRoutes, { prefix: '/api' });
   await app.register(settingsRoutes, { prefix: '/api' });
 
   return app;
