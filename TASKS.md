@@ -202,7 +202,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done (add date)
       in a real browser with actual connectivity toggling; exponential-backoff timing
       (retryCount is tracked; the delay schedule is the caller's to apply).
 
-## Phase 8 — Backup & recovery ✅ 2026-08-29 (commit __PENDING8__) — cloud + scheduler deferred
+## Phase 8 — Backup & recovery ✅ 2026-08-29 (commit 4de76c8) — cloud + scheduler deferred
 - [x] Backup pipeline (`services/backup.ts`): **logical dump** (schema from the migration
       files, data via `SELECT * FROM <table>`) instead of `pg_dump` — the trimmed
       `@embedded-postgres` bundle has no `pg_dump`, and a logical dump is driver-agnostic
