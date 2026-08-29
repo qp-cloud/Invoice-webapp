@@ -243,7 +243,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done (add date)
       (open Q #16), `inventory-backup` standalone CLI, full retention rotation, the
       `BACKUP_RECOVERY.md` runbook refresh for the logical-dump format.
 
-## Phase 9 — Production hardening ✅ 2026-08-29 (commit __PENDING9__) — partial, see notes
+## Phase 9 — Production hardening ✅ 2026-08-29 (commit 862302f) — partial, see notes
 - [x] `scripts/seed.ts` — the §23 mock dataset (SKU-001..004), refuses to run over an
       existing catalogue without `--force`.
 - [x] `scripts/stress-seed.ts` — configurable (default 10k products / 100k movements),
