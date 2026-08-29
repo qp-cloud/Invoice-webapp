@@ -36,8 +36,31 @@ Then open **http://localhost:PORT** (default http://localhost:4000).
 `./run.sh` loads `.env` via `node --env-file` and starts `packages/server/dist/index.js`.
 Migrations run automatically on boot. To rebuild first: `./run.sh --build`.
 
-Run it under a process manager (pm2, systemd, nssm, Windows Task Scheduler "at logon")
-so it restarts on reboot / crash.
+### Run it as an always-on service (WSL + systemd)
+
+WSL on Windows 11 runs systemd. Install the bundled unit once:
+
+```bash
+sudo cp deploy/inventory.service /etc/systemd/system/inventory.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now inventory
+systemctl status inventory --no-pager        # expect: active (running)
+journalctl -u inventory -f                    # live logs
+```
+
+It restarts on crash (`Restart=always`) and starts whenever WSL boots.
+After a code change: `npm run build && sudo systemctl restart inventory`.
+
+To bring WSL (and the service) up at Windows login — PowerShell **as admin**, once:
+
+```powershell
+$a = New-ScheduledTaskAction -Execute "wsl.exe" -Argument "-d Ubuntu --exec /bin/true"
+Register-ScheduledTask -TaskName "Start WSL Inventory" -Action $a `
+  -Trigger (New-ScheduledTaskTrigger -AtLogOn) -RunLevel Highest
+```
+
+Edit `deploy/inventory.service` if your Linux username, repo path, or Node path differ
+(`whoami`, `pwd`, `which node`).
 
 ## 3. Data & backups
 
