@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+.git
+.env
+*.log
+packages/server/data
+packages/server/backups
+packages/server/pglite-data
+packages/server/test/.pg-url
+packages/web/playwright-report
+packages/web/test-results
+coverage
+.vscode
+.idea

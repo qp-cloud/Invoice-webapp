@@ -62,6 +62,33 @@ Register-ScheduledTask -TaskName "Start WSL Inventory" -Action $a `
 Edit `deploy/inventory.service` if your Linux username, repo path, or Node path differ
 (`whoami`, `pwd`, `which node`).
 
+### Or run it in Docker
+
+`Dockerfile` + `docker-compose.yml` are in the repo. One container serves the API + web
+UI; the database and backups live in named volumes.
+
+```bash
+cp .env.example .env      # edit APP_PIN and BACKUP_PASSPHRASE
+docker compose up -d --build
+docker compose logs -f    # watch it come up
+```
+
+Open **http://localhost:4000**. `restart: unless-stopped` brings it back after a crash or
+a Docker restart; enable "start Docker on login" for boot.
+
+- `.env` supplies `APP_PIN` / `BACKUP_PASSPHRASE`; compose fixes `HOST`, `PORT`,
+  and the `/data` + `/backups` paths. `.env` is **not** copied into the image.
+- **Rebuild after a code change:** `docker compose up -d --build`.
+- **Reuse an existing `packages/server/data`** instead of a fresh volume — either swap the
+  compose volumes for bind mounts (`- ./packages/server/data:/data`,
+  `- ./packages/server/backups:/backups`) or seed the named volume once:
+  `docker run --rm -v inventory-data:/data -v "$(pwd)/packages/server/data":/src alpine sh -c 'cp -a /src/. /data/'`
+- **LAN access:** with Docker Desktop the published port lands on the Windows host, so
+  other machines reach `http://<this-PC-LAN-IP>:4000` after the firewall rule (no WSL
+  networking config needed). Docker running *inside* WSL has the same
+  mirrored-networking / portproxy caveat as the bare-metal setup.
+- **Back up the volumes:** `docker run --rm -v inventory-data:/data -v "$(pwd)":/out alpine tar czf /out/inventory-data.tgz -C /data .`
+
 ## 3. Data & backups
 
 - **Database:** everything lives in `PGLITE_DATA_DIR` (`packages/server/data` by default).
