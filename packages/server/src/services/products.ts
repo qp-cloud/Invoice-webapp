@@ -318,7 +318,8 @@ export async function listProducts(
   const fyJoin = gregYear
     ? `LEFT JOIN LATERAL (
          SELECT
-           COALESCE(sum(m.quantity) FILTER (WHERE m.type = 'OPENING'), 0)::text AS stock68,
+           COALESCE(sum(m.quantity) FILTER (WHERE m.type = 'OPENING'
+                     OR m.occurred_on < DATE '${gregYear}-01-01'), 0)::text AS stock68,
            COALESCE(sum(m.quantity) FILTER (WHERE m.type = 'PURCHASE'
                      AND extract(year FROM m.occurred_on) = ${gregYear}), 0)::text AS purchases_cfy,
            COALESCE(-sum(m.quantity) FILTER (WHERE m.type = 'SALE'

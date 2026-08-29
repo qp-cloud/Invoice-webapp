@@ -25,6 +25,7 @@ export interface DashboardPayload {
 export async function getDashboard(db: Queryable): Promise<DashboardPayload> {
   const fiscalYear = await getCurrentFiscalYear(db);
   const gregYear = fiscalYear - 543;
+  const cfyStart = `${gregYear}-01-01`;
 
   const mv = await db.query<{
     stock68: string;
@@ -32,14 +33,15 @@ export async function getDashboard(db: Queryable): Promise<DashboardPayload> {
     sales_qty: string;
   }>(
     `SELECT
-       COALESCE(sum(quantity) FILTER (WHERE type = 'OPENING'), 0)::text  AS stock68,
+       COALESCE(sum(quantity) FILTER (WHERE type = 'OPENING'
+                 OR occurred_on < $2::date), 0)::text                   AS stock68,
        COALESCE(sum(quantity) FILTER (WHERE type = 'PURCHASE'
                  AND extract(year FROM occurred_on) = $1), 0)::text      AS purchases_qty,
        COALESCE(-sum(quantity) FILTER (WHERE type = 'SALE'
                  AND extract(year FROM occurred_on) = $1), 0)::text      AS sales_qty
      FROM movements
      WHERE status = 'ACTIVE'`,
-    [gregYear],
+    [gregYear, cfyStart],
   );
 
   const purch = await db.query<{ value: string }>(

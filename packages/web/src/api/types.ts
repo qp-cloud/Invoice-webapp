@@ -87,3 +87,47 @@ export interface ProductStockDetail extends ProductStock {
   minStock: string;
   fyView: FyView;
 }
+
+export interface MonthlyReportRow {
+  productId: string;
+  sku: string;
+  name: string;
+  openingQty: string;
+  purchasesQty: string;
+  purchasesValueSatang: number;
+  salesQty: string;
+  salesRevenueSatang: number;
+  estimatedCogsSatang: number;
+  estimatedGrossProfitSatang: number;
+  grossMarginPct: number | null;
+  closingQty: string;
+}
+
+export interface MonthlyReport {
+  ym: string;
+  rows: MonthlyReportRow[];
+  totals: {
+    purchasesValueSatang: number;
+    salesRevenueSatang: number;
+    estimatedCogsSatang: number;
+    estimatedGrossProfitSatang: number;
+    grossMarginPct: number | null;
+  };
+}
+
+export interface LowStockRow {
+  productId: string;
+  sku: string;
+  name: string;
+  qtyOnHand: string;
+  minStock: string;
+  shortfall: string;
+}
+
+export interface OversoldRow {
+  productId: string;
+  sku: string;
+  name: string;
+  qtyOnHand: string;
+  missingBalance: string;
+}

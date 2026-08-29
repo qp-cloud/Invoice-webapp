@@ -329,27 +329,35 @@ export async function getLedger(
   };
 }
 
-/** 68/69 view for one product against the current fiscal year (spec §5.3). */
+/**
+ * 68/69 view for one product against the current fiscal year (spec §5.3, §6.5).
+ * "Stock 68" is the closing position at the start of the CFY: every OPENING movement
+ * plus the net of anything dated before the CFY start. Before the first rollover this
+ * equals the sum of OPENING movements; after a rollover it becomes the prior year's
+ * closing balance without any snapshot table.
+ */
 export async function currentFyView(
   db: Queryable,
   productId: string,
   currentFiscalYear: number,
 ): Promise<{ stock68: string; purchasesCfy: string; salesCfy: string; variance: string }> {
   const gregYear = currentFiscalYear - 543;
+  const cfyStart = `${gregYear}-01-01`;
   const { rows } = await db.query<{
     opening: string;
     purchases: string;
     sales: string;
   }>(
     `SELECT
-       COALESCE(sum(quantity) FILTER (WHERE type = 'OPENING'), 0)::text AS opening,
+       COALESCE(sum(quantity) FILTER (WHERE type = 'OPENING'
+                 OR occurred_on < $3::date), 0)::text                   AS opening,
        COALESCE(sum(quantity) FILTER (WHERE type = 'PURCHASE'
                  AND extract(year FROM occurred_on) = $2), 0)::text     AS purchases,
        COALESCE(-sum(quantity) FILTER (WHERE type = 'SALE'
                  AND extract(year FROM occurred_on) = $2), 0)::text     AS sales
      FROM movements
      WHERE product_id = $1 AND status = 'ACTIVE'`,
-    [productId, gregYear],
+    [productId, gregYear, cfyStart],
   );
   const r = rows[0]!;
   const purchases = new Decimal(r.purchases);

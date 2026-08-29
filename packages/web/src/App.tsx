@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { DashboardPage } from './pages/DashboardPage.js';
+import { ReportsPage } from './pages/ReportsPage.js';
 import { StockPage } from './pages/StockPage.js';
 
-type View = 'dashboard' | 'stock';
+type View = 'dashboard' | 'stock' | 'reports';
 
 export function App(): JSX.Element {
   const [view, setView] = useState<View>('dashboard');
@@ -17,8 +18,13 @@ export function App(): JSX.Element {
         <NavButton active={view === 'stock'} onClick={() => setView('stock')}>
           สต็อก
         </NavButton>
+        <NavButton active={view === 'reports'} onClick={() => setView('reports')}>
+          รายงาน
+        </NavButton>
       </nav>
-      {view === 'dashboard' ? <DashboardPage /> : <StockPage />}
+      {view === 'dashboard' && <DashboardPage />}
+      {view === 'stock' && <StockPage />}
+      {view === 'reports' && <ReportsPage />}
     </div>
   );
 }

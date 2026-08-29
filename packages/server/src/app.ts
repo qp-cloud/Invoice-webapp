@@ -7,10 +7,12 @@ import { currentSchemaVersion } from './db/migrate.js';
 import { registerErrorHandler } from './errors/mapper.js';
 import { logger } from './logger.js';
 import { dashboardRoutes } from './routes/dashboard.js';
+import { fiscalYearActionRoutes } from './routes/fiscalYear.js';
 import { healthRoutes } from './routes/health.js';
 import { lookupRoutes } from './routes/lookups.js';
 import { periodRoutes } from './routes/periods.js';
 import { productRoutes } from './routes/products.js';
+import { reportRoutes } from './routes/reports.js';
 import { settingsRoutes } from './routes/settings.js';
 import { transactionRoutes } from './routes/transactions.js';
 
@@ -45,6 +47,8 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(lookupRoutes, { prefix: '/api' });
   await app.register(transactionRoutes, { prefix: '/api' });
   await app.register(periodRoutes, { prefix: '/api' });
+  await app.register(fiscalYearActionRoutes, { prefix: '/api' });
+  await app.register(reportRoutes, { prefix: '/api' });
   await app.register(settingsRoutes, { prefix: '/api' });
 
   return app;

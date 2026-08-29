@@ -82,7 +82,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done (add date)
       400 + audit; idempotency replay + different-body 422; §14.2 A/B concurrency both
       modes (serialized under PGlite — multi-client deferred to real Postgres).
 
-## Phase 4 — Dashboard & master stock table ✅ 2026-08-29 (commit __PENDING__)
+## Phase 4 — Dashboard & master stock table ✅ 2026-08-29 (commit 0ce3265)
 - [x] `GET /api/dashboard` — pre-aggregated KPI payload (§18.1), `services/dashboard.ts`.
 - [x] Master table: columns per §19.1; search (SKU, name); filters (category, status,
       low-stock, oversold); sortable headers; **server-side pagination** (page size 20).
@@ -101,21 +101,36 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done (add date)
       correct against the mock dataset. **Not verified:** drawers in a real browser
       (no display in this environment).
 
-## Phase 5 — Financial reporting  ◄ HERE NOW
-- [ ] Weighted-average costing wired into every costed movement; `avg_cost_micro`.
-- [ ] `cogs_satang` computed + stored on sale post (round-half-up).
-- [ ] Cost-basis reset rule for `qty_on_hand ≤ 0`; `COST_BASIS_RESET` audit.
-- [ ] Void-purchase handling via ledger replay.
-- [ ] Fiscal-year rollover: `POST /api/fiscal-year/roll` — require all 12 periods CLOSED,
-      mandatory backup, advance `current_fiscal_year`, `ROLL_FISCAL_YEAR` audit; no
-      ledger data moved (§6.5).
-- [ ] Reports: monthly, low-stock, oversold — SQL-aggregated endpoints.
-- [ ] Recharts views for the reports.
-      **Verify:** §9.3 costing example; round-half-up test; gross-profit math;
-      reset-case test; void-purchase replay test; rollover advances labels + sums to the
-      new FY without changing any movement row.
+## Phase 5 — Financial reporting ✅ 2026-08-29 (commit __PENDING5__)
+- [x] Weighted-average costing wired into every costed movement; `avg_cost_micro`
+      (done in Phase 3; explicit `financial.test.ts` coverage added here).
+- [x] `cogs_satang` computed + stored on sale post (round-half-up) — Phase 3;
+      cross-checked in `reports.test.ts` totals vs raw SQL.
+- [x] Cost-basis reset rule for `qty_on_hand < 0`; `COST_BASIS_RESET` audit —
+      `financial.test.ts` asserts avg resets to the inflow cost + one audit row.
+- [x] Void-purchase handling via ledger replay — `financial.test.ts` asserts the
+      cost basis reverts and `stock_state` matches an ACTIVE-only replay.
+- [x] Fiscal-year rollover: `POST /api/fiscal-year/roll` (`services/fiscalYear.ts`) —
+      `confirm` required, all 12 periods of the outgoing year CLOSED else
+      `FY_PERIODS_OPEN`, backup guard (`backupConfirmed` / `settings.last_backup_at`,
+      real backup wiring lands in Phase 8) else `BACKUP_REQUIRED`, advances
+      `current_fiscal_year`, opens the 12 new-year periods, `ROLL_FISCAL_YEAR` audit,
+      no movement rows touched. **Stock 68 is now a derived ledger cutoff** (OPENING
+      movements OR `occurred_on < CFY start`) across `currentFyView` / dashboard /
+      master list, so a rollover makes it the prior-year closing balance with no
+      snapshot table (§6.5).
+- [x] Reports: `GET /api/reports/monthly?ym=` (per-SKU opening / purchases qty+value /
+      sales qty+revenue / est. COGS / est. gross profit / margin % / closing + totals,
+      divide-by-zero guarded), `/reports/low-stock`, `/reports/oversold` — all
+      SQL-aggregated (`services/reports.ts`).
+- [x] Recharts views (`ReportsPage.tsx`): per-SKU purchases/sales/profit bar chart +
+      monthly table with totals footer + low-stock + oversold tables; month picker;
+      new "รายงาน" nav tab. **UI not browser-verified (no display).**
+      **Verified (automated):** §9.3 COGS golden (Phase 3) + gross-profit + margin math +
+      divide-by-zero; cost-basis reset; void-purchase replay; rollover guard + advance +
+      "no movement row changed" + derived Stock 68 = prior-year close. 45 server tests.
 
-## Phase 6 — Excel / CSV
+## Phase 6 — Excel / CSV  ◄ HERE NOW
 - [ ] `POST /api/imports`: parse (SheetJS) → sanitize (`cleanData`) → validate →
       duplicate-check → build preview; nothing written.
 - [ ] File hash + row hash; `import_batches`, `import_rows` tables.

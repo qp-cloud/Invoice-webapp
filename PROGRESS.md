@@ -7,10 +7,10 @@
 > "Implemented" alone never means "working" — it means code exists and type-checks.
 > Never record a level higher than the tests that were actually executed.
 
-**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phases 1–4 complete**
-(commits 07c6fdf, 7269c20, 92a5d09, 0556cfc + Phase 4). 141 tests green (shared 105,
-server 35, web 1). Phase 4 UI not verified in a real browser (no display in this env).
-Autonomous build of Phases 1–7 in progress; commit per phase.
+**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phases 1–5 complete**
+(commits 07c6fdf, 7269c20, 92a5d09, 0556cfc, 0ce3265 + Phase 5). 151 tests green
+(shared 105, server 45, web 1). Phase 4/5 UI not verified in a real browser (no display
+in this env). Autonomous build of Phases 1–7 in progress; commit per phase.
 
 ---
 
@@ -46,7 +46,7 @@ Autonomous build of Phases 1–7 in progress; commit per phase.
 | `replayLedger` + golden master | §9.4, §23 | Unit tested | pure `costStep`/`replayLedger`; §9.3 / §11 / §23 golden asserted |
 | `stock_state` / `stock_cost_state` caches + reconciliation | §4, §21 | Integration tested | merged `stock_state` (qty + cost cols) updated in same tx; `recomputeStockState` full replay; recon job Phase 9 |
 | Stock formulas (full + 68/69) + variance | §5.2–§5.4 | Integration tested | `currentFyView` (stock68 / purchasesCfy / salesCfy / variance) |
-| Rolling fiscal year + rollover action | §5.3, §6.5 | Integration tested (view) | `settings.current_fiscal_year`; GET /fiscal-year dynamic "Stock 69" labels; `roll` action = Phase 5 |
+| Rolling fiscal year + rollover action | §5.3, §6.5 | Integration tested | `POST /api/fiscal-year/roll` (`services/fiscalYear.ts`): confirm + all-12-CLOSED (`FY_PERIODS_OPEN`) + backup guard (`BACKUP_REQUIRED`, real wiring Phase 8) + advance + open new periods + `ROLL_FISCAL_YEAR` audit + no movement rows touched. Stock 68 now a derived ledger cutoff so a rollover yields prior-year close with no snapshot |
 | Negative-stock modes (ALLOW / PREVENT) | §6.1 | Integration tested | ALLOW warns + oversold + missingBalance; PREVENT → 422, nothing written |
 | Stock status badges + oversold / Missing Balance | §6.2 | Integration tested | domain `stockStatus` / `isOversold` / `missingBalance`; surfaced in product stock block |
 | Void semantics | §5.6 | Integration tested | `voidDocumentTx` marks doc + movements VOIDED, recompute; excluded from calc; VOID audit |
@@ -61,11 +61,11 @@ Autonomous build of Phases 1–7 in progress; commit per phase.
 | Weighted-average costing + COGS (round-half-up) | §9.2, §9.3 | Unit + integration tested | micro-THB avg; `costStep` books COGS; §9.3 golden (2,133,333 satang) |
 | Owner-entered cost: customer return + positive adjustment | §9.2, §10.3, §10.4 | Integration tested | schema refine enforces unitCostSatang; prefill-from-sale-COGS = Phase 4 UI |
 | Cost-basis reset (`qty < 0`) + void-purchase replay | §9.2 | Unit + integration tested | strict `qty.lt(0)` reset branch; `costBasisResets` index list; void → `recomputeStockState` replay |
-| Estimated gross profit / margin reporting | §9.5 | Not started | |
+| Estimated gross profit / margin reporting | §9.5 | Integration tested | `monthlyReport` totals: revenue − COGS = gross profit, margin % `toFixed(2)`, divide-by-zero → null; cross-checked vs raw SQL |
 | Dashboard KPI cards | §18 | Integration tested (API) + UI implemented | `GET /api/dashboard` SQL-aggregated, cross-checked vs raw SQL; `DashboardPage` renders all 10 §18.1 cards with dynamic FY labels. UI not browser-verified |
 | Master stock table (search / filter / sort / paginate) | §19 | Integration tested (API) + UI implemented | `GET /api/products` + per-row `fyView` + dynamic labels; `StockPage` search / status+category filters / low+oversold toggles / sortable headers / server pagination / row action buttons. UI not browser-verified |
-| Transaction UI drawers (Purchase / Sale / Return / Adjust) | §19.3 | Implemented (UI unverified) | `TransactionDrawer`: live current stock, auto totals, backdate warning + reason, projected balance, oversell warning. Return prefill-from-sale-COGS deferred to Phase 5 |
-| Monthly / low-stock / oversold reports + charts | §21 (brief), Phase 5 | Not started | |
+| Transaction UI drawers (Purchase / Sale / Return / Adjust) | §19.3 | Implemented (UI unverified) | `TransactionDrawer`: live current stock, auto totals, backdate warning + reason, projected balance, oversell warning. Return prefill-from-sale-COGS still deferred (needs sale-lookup endpoint) |
+| Monthly / low-stock / oversold reports + charts | §21 (brief), §9.5 | Integration tested (API) + UI implemented | `GET /api/reports/monthly?ym=` + `/low-stock` + `/oversold` SQL-aggregated (`services/reports.ts`); `ReportsPage` bar chart + monthly table + two lists. UI not browser-verified |
 | Excel/CSV import pipeline (parse→sanitize→validate→preview→commit) | §13 | Not started | |
 | Import atomicity (all-or-nothing) + partial opt-in | §13.3, §13.4 | Not started | |
 | Import idempotency (file hash / row hash) | §15 | Not started | |
@@ -101,9 +101,11 @@ Autonomous build of Phases 1–7 in progress; commit per phase.
 | Inventory ledger (server) | 10 | 10 | 0 | Integration tested |
 | Concurrency (server, serialized under PGlite) | 3 | 3 | 0 | Integration tested (multi-client deferred to real Postgres) |
 | Dashboard + master-table 68/69 view (server) | 4 | 4 | 0 | Integration tested (raw-SQL cross-check) |
-| Web (shell + dashboard + master table nav) | 1 | 1 | 0 | Component tested (drawers not browser-verified) |
+| Financial reports — monthly / low-stock / oversold (server) | 4 | 4 | 0 | Integration tested (raw-SQL cross-check) |
+| Fiscal-year rollover (server) | 4 | 4 | 0 | Integration tested |
+| Financial — void-purchase replay + cost-basis reset (server) | 2 | 2 | 0 | Integration tested |
+| Web (shell + dashboard + master table + reports nav) | 1 | 1 | 0 | Component tested (drawers + charts not browser-verified) |
 | Import | 0 | 0 | 0 | Not started |
-| Financial | 0 | 0 | 0 | Not started (costing covered under ledger; reports pending) |
 | Recovery | 0 | 0 | 0 | Not started (needs real Postgres) |
 | Offline / sync | 0 | 0 | 0 | Not started |
 
@@ -114,16 +116,19 @@ Autonomous build of Phases 1–7 in progress; commit per phase.
 - **Concurrency (spec §14.2):** the "no lost update" scenarios run SERIALIZED under PGlite
   (single connection). Guard + idempotency logic verified; genuine multi-client
   contention deferred to a real-Postgres run (`TEST_PG_URL`, TESTING.md §3.5).
-- Fiscal-year **rollover action** (`POST /api/fiscal-year/roll`) not built yet — only the
-  read-side 68/69 view + dynamic labels. Scheduled for Phase 5.
-- Financial **reports** (monthly / low-stock / oversold endpoints + Recharts) not started;
-  weighted-average costing + COGS itself is done and tested under the ledger suite.
-- Phase 4 UI (dashboard, master table, 4 transaction drawers, ledger drawer, edit-product
-  drawer) is **built and typechecks + a render smoke test passes, but has not been run in
-  a real browser** — no display in this environment. Golden-path + edge-case click-through
-  still owed (drawer submit flows, filter combinations, pagination boundaries).
-- Customer-return **Unit Cost prefill from the linked sale's COGS** (spec §19.3) is not
-  wired — needs a sale-lookup endpoint; moved to Phase 5.
+- **Fiscal-year rollover backup guard** stands in for the real backup subsystem: it
+  passes on `backupConfirmed: true` or a fresh `settings.last_backup_at`. Phase 8 must
+  wire a real `pg_dump` success into that timestamp.
+- Phase 4/5 UI (dashboard, master table, 4 transaction drawers, ledger drawer,
+  edit-product drawer, reports page + Recharts) is **built and typechecks + `vite build`
+  succeeds + a render smoke test passes, but has not been run in a real browser** — no
+  display in this environment. Golden-path + edge-case click-through still owed.
+- Web bundle is ~633 kB (recharts is heavy); acceptable for a local single-owner app,
+  revisit with code-splitting in Phase 9 if needed.
+- `npm audit`: pre-existing high/critical advisories in `esbuild` (vite dev server) and
+  `drizzle-orm` (<0.45.2, not yet used for queries). Defer to the Phase 9 security review.
+- Customer-return **Unit Cost prefill from the linked sale's COGS** (spec §19.3) still not
+  wired — needs a sale-lookup endpoint.
 - Offline `PREVENT` overselling is enforceable only at sync time (design constraint,
   `PROJECT_SPEC.md` §6.1, §28.2) — not a defect; must be tested as specified.
 
@@ -140,4 +145,5 @@ Autonomous build of Phases 1–7 in progress; commit per phase.
 | 2026-08-29 | **Phase 1 done** (commit 07c6fdf). Workspaces, PGlite client + Database interface, SQL migrations 0001–0003 + runner, Fastify + pino + error mapper, /api/health, web scaffold, CI. typecheck/lint/test green. Known limitation: true multi-client concurrency (spec §14.2) needs real Postgres. |
 | 2026-08-29 | **Phase 2 done** (commit 7269c20). shared: cleanData (sku/number/date) + money (satang/micro) + format + domain + zod schemas, 99 unit tests. server: product master CRUD + SKU UNIQUE + UPSERT + categories + units + audit, 18 integration tests. web: minimal products page. Fixed decimal.js import (named `{ Decimal }`, not default) under verbatimModuleSyntax. |
 | 2026-08-29 | **Phase 3 done** (commit 92a5d09). shared: `replayLedger` split into pure `costStep`; transaction zod schemas. server: `services/ledger` (postMovementTx single write path, recomputeStockState, voidDocumentTx, getLedger, currentFyView), `services/documents` (createPurchase/Sale/Return/Adjustment/Opening + voidDocument, all via `runIdempotent`), `services/idempotency` (atomic work + processed_requests), `services/periods` / `services/settings` (+ route) / `services/backdate`, `db/lock` (advisory xact lock), PGlite date-OID parser. Routes: transactions / periods / settings + products ledger & stock. Tests: ledger 10, concurrency 3 (serialized under PGlite, multi-client deferred). 137 green total. Docs recorded in commit 0556cfc. |
-| 2026-08-29 | **Phase 4 done.** server: `services/dashboard` + `GET /api/dashboard` (§18.1, SQL-aggregated); `listProducts` extended with per-row `fyView` (68/69 + variance via LATERAL) and dynamic `labels`. web: rebuilt shell (`App` nav dashboard/stock), `DashboardPage` (10 KPI cards), `StockPage` (search / status+category filter / low+oversold toggle / sortable headers / server pagination / row actions), `Drawer` + `TransactionDrawer` (purchase/sale/return/adjust: live stock, auto totals, backdate warning, oversell warning) + `LedgerDrawer` + `EditProductDrawer`; `api.postTxn` sends a fresh Idempotency-Key; `lib/fmt` wraps shared formatters. Tests: dashboard 4 (raw-SQL cross-check + fyView + filters), web smoke updated. 141 green. UI not browser-verified (no display). |
+| 2026-08-29 | **Phase 4 done** (commit 0ce3265). server: `services/dashboard` + `GET /api/dashboard` (§18.1, SQL-aggregated); `listProducts` extended with per-row `fyView` (68/69 + variance via LATERAL) and dynamic `labels`. web: rebuilt shell (`App` nav dashboard/stock), `DashboardPage` (10 KPI cards), `StockPage` (search / status+category filter / low+oversold toggle / sortable headers / server pagination / row actions), `Drawer` + `TransactionDrawer` (purchase/sale/return/adjust: live stock, auto totals, backdate warning, oversell warning) + `LedgerDrawer` + `EditProductDrawer`; `api.postTxn` sends a fresh Idempotency-Key; `lib/fmt` wraps shared formatters. Tests: dashboard 4 (raw-SQL cross-check + fyView + filters), web smoke updated. 141 green. UI not browser-verified (no display). |
+| 2026-08-29 | **Phase 5 done.** server: `services/fiscalYear` + `POST /api/fiscal-year/roll` (confirm + all-12-CLOSED + backup guard + advance + open new periods + `ROLL_FISCAL_YEAR` audit, no movement rows touched); Stock 68 reworked to a derived ledger cutoff (`type='OPENING' OR occurred_on < CFY start`) in `currentFyView` / dashboard / `listProducts` so a rollover yields the prior-year close with no snapshot; `services/reports` + `GET /api/reports/monthly?ym=` / `/low-stock` / `/oversold` (SQL-aggregated, margin divide-by-zero guarded). web: `ReportsPage` (recharts bar chart + monthly table w/ totals footer + low-stock + oversold lists + month picker) + "รายงาน" nav tab; added `recharts` dep. Tests: `fiscalYear` 4, `reports` 4, `financial` 2 (void-purchase replay + cost-basis reset). 151 green. `vite build` OK. UI not browser-verified. |
