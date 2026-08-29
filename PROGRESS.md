@@ -7,9 +7,9 @@
 > "Implemented" alone never means "working" — it means code exists and type-checks.
 > Never record a level higher than the tests that were actually executed.
 
-**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phases 1–2 complete and
-verified** (commits 07c6fdf, 7269c20). 118 tests green. Autonomous build of Phases 1–7 in
-progress; commit per phase.
+**Last updated:** 2026-08-29 — Spec v0.3 (PGlite for dev/test). **Phases 1–3 complete and
+verified** (commits 07c6fdf, 7269c20, 92a5d09). 137 tests green (shared 105, server 31,
+web 1). Autonomous build of Phases 1–7 in progress; commit per phase.
 
 ---
 
@@ -41,25 +41,25 @@ progress; commit per phase.
 | Product master + SKU UNIQUE + UPSERT | §8 | Integration tested | create/update/list; dup SKU any-case → 409; UPSERT no-dup |
 | Units / categories (conversion-ready model) | §8 (brief §8) | Integration tested | 12 seeded units; category delete blocked when in use |
 | Audit log (write path) | §20 | Integration tested | writeAudit; product CREATE/UPDATE rows asserted |
-| Movement ledger (`movements`, all 9 types) | §5 | Not started | |
-| `replayLedger` + golden master | §9.4, §23 | Not started | |
-| `stock_state` / `stock_cost_state` caches + reconciliation | §4, §21 | Not started | |
-| Stock formulas (full + 68/69) + variance | §5.2–§5.4 | Not started | |
-| Rolling fiscal year + rollover action | §5.3, §6.5 | Not started | `settings.current_fiscal_year`, dynamic 68/69 labels |
-| Negative-stock modes (ALLOW / PREVENT) | §6.1 | Not started | |
-| Stock status badges + oversold / Missing Balance | §6.2 | Not started | |
-| Void semantics | §5.6 | Not started | |
-| Monthly periods (open / closed / reopen) | §6.4 | Not started | |
-| Backdated-transaction warning + reason | §6.3 | Not started | |
-| Purchases | §10.1 | Not started | |
-| Sales (live stock before confirm) | §10.2, §19.3 | Not started | |
-| Customer / supplier returns | §10.3 | Not started | |
-| Inventory adjustments (+ reasons) | §10.4 | Not started | |
-| Transaction ledger UI (shows the calculation) | §11 | Not started | |
-| Audit log | §20 | Not started | |
-| Weighted-average costing + COGS (round-half-up) | §9.2, §9.3 | Not started | |
-| Owner-entered cost: customer return + positive adjustment | §9.2, §10.3, §10.4 | Not started | prefill return cost from linked sale COGS |
-| Cost-basis reset (`qty ≤ 0`) + void-purchase replay | §9.2 | Not started | |
+| Movement ledger (`movements`, all 9 types) | §5 | Integration tested | signed qty CHECK, one-active-OPENING partial-unique, seq identity; postMovementTx single write path |
+| `replayLedger` + golden master | §9.4, §23 | Unit tested | pure `costStep`/`replayLedger`; §9.3 / §11 / §23 golden asserted |
+| `stock_state` / `stock_cost_state` caches + reconciliation | §4, §21 | Integration tested | merged `stock_state` (qty + cost cols) updated in same tx; `recomputeStockState` full replay; recon job Phase 9 |
+| Stock formulas (full + 68/69) + variance | §5.2–§5.4 | Integration tested | `currentFyView` (stock68 / purchasesCfy / salesCfy / variance) |
+| Rolling fiscal year + rollover action | §5.3, §6.5 | Integration tested (view) | `settings.current_fiscal_year`; GET /fiscal-year dynamic "Stock 69" labels; `roll` action = Phase 5 |
+| Negative-stock modes (ALLOW / PREVENT) | §6.1 | Integration tested | ALLOW warns + oversold + missingBalance; PREVENT → 422, nothing written |
+| Stock status badges + oversold / Missing Balance | §6.2 | Integration tested | domain `stockStatus` / `isOversold` / `missingBalance`; surfaced in product stock block |
+| Void semantics | §5.6 | Integration tested | `voidDocumentTx` marks doc + movements VOIDED, recompute; excluded from calc; VOID audit |
+| Monthly periods (open / closed / reopen) | §6.4 | Integration tested | `ensurePeriod` lazy OPEN; `assertPeriodOpen` → PERIOD_CLOSED; close / reopen(reason) |
+| Backdated-transaction warning + reason | §6.3 | Integration tested | `checkBackdate`: BACKDATED warning; gap > threshold → VALIDATION_FAILED w/o reason; reason → audit |
+| Purchases | §10.1 | Integration tested | `createPurchase` via `runIdempotent`; PURCHASE movement + audit |
+| Sales (live stock before confirm) | §10.2, §19.3 | Integration tested (API) | `createSale`; SALE movement + `cogs_satang`; live-stock UI = Phase 4 |
+| Customer / supplier returns | §10.3 | Integration tested | `createReturn`; CUSTOMER requires unitCostSatang (schema refine); SUPPLIER outflow |
+| Inventory adjustments (+ reasons) | §10.4 | Integration tested | `createAdjustment`; DAMAGED + negative → DAMAGE movement; else ADJUSTMENT signed delta |
+| Transaction ledger UI (shows the calculation) | §11 | Integration tested (API) | `getLedger`: openingBalance + running balance + currentStock; UI = Phase 4 |
+| Audit log | §20 | Integration tested | CREATE / VOID / SETTINGS_CHANGE / COST_BASIS_RESET rows asserted |
+| Weighted-average costing + COGS (round-half-up) | §9.2, §9.3 | Unit + integration tested | micro-THB avg; `costStep` books COGS; §9.3 golden (2,133,333 satang) |
+| Owner-entered cost: customer return + positive adjustment | §9.2, §10.3, §10.4 | Integration tested | schema refine enforces unitCostSatang; prefill-from-sale-COGS = Phase 4 UI |
+| Cost-basis reset (`qty < 0`) + void-purchase replay | §9.2 | Unit + integration tested | strict `qty.lt(0)` reset branch; `costBasisResets` index list; void → `recomputeStockState` replay |
 | Estimated gross profit / margin reporting | §9.5 | Not started | |
 | Dashboard KPI cards | §18 | Not started | |
 | Master stock table (search / filter / sort / paginate) | §19 | Not started | |
@@ -69,8 +69,8 @@ progress; commit per phase.
 | Import idempotency (file hash / row hash) | §15 | Not started | |
 | Invalid-row export | §13.6 | Not started | |
 | Exports (all report kinds) | §14.3, brief §27 | Not started | |
-| Idempotency middleware (`processed_requests`) | §14.1 | Not started | |
-| Concurrency safety (per-product lock, no lost updates) | §14.2 | Not started | |
+| Idempotency middleware (`processed_requests`) | §14.1 | Integration tested | `runIdempotent` atomic (work + processed_requests in one tx); replay `_replayed:true`; different body → 422; doc tables carry `idempotency_key UNIQUE` |
+| Concurrency safety (per-product lock, no lost updates) | §14.2 | Integration tested (serialized) | `pg_advisory_xact_lock` + `SELECT … FOR UPDATE`; A/B 80/50 ALLOW + PREVENT + parallel-idempotency pass under PGlite. **Genuine multi-client "no lost update" deferred to real Postgres** |
 | Offline cache + outbound queue (Dexie) | §12.2 | Not started | |
 | Sync engine (FIFO, retry-no-dup, conflict isolation) | §12.2–§12.3 | Not started | |
 | Sync conflict UI | §12.3 | Not started | |
@@ -93,14 +93,14 @@ progress; commit per phase.
 | Suite | Tests | Passed | Failed | Level reached |
 | --- | --- | --- | --- | --- |
 | Sanitization (shared) | 74 | 74 | 0 | Unit tested |
-| Money / format / domain (shared) | 25 | 25 | 0 | Unit tested |
+| Money / format / domain + replayLedger (shared) | 31 | 31 | 0 | Unit tested |
 | Foundation + migrations + health (server) | 7 | 7 | 0 | Integration tested |
 | Product master + lookups (server) | 11 | 11 | 0 | Integration tested |
+| Inventory ledger (server) | 10 | 10 | 0 | Integration tested |
+| Concurrency (server, serialized under PGlite) | 3 | 3 | 0 | Integration tested (multi-client deferred to real Postgres) |
 | Web (scaffold + products page) | 1 | 1 | 0 | Component tested |
-| Inventory ledger | 0 | 0 | 0 | Not started |
 | Import | 0 | 0 | 0 | Not started |
-| Financial | 0 | 0 | 0 | Not started |
-| Concurrency | 0 | 0 | 0 | Not started |
+| Financial | 0 | 0 | 0 | Not started (costing covered under ledger; reports pending) |
 | Recovery | 0 | 0 | 0 | Not started (needs real Postgres) |
 | Offline / sync | 0 | 0 | 0 | Not started |
 
@@ -108,7 +108,14 @@ progress; commit per phase.
 
 ## Known limitations / unverified areas
 
-- Everything. No implementation has begun.
+- **Concurrency (spec §14.2):** the "no lost update" scenarios run SERIALIZED under PGlite
+  (single connection). Guard + idempotency logic verified; genuine multi-client
+  contention deferred to a real-Postgres run (`TEST_PG_URL`, TESTING.md §3.5).
+- Fiscal-year **rollover action** (`POST /api/fiscal-year/roll`) not built yet — only the
+  read-side 68/69 view + dynamic labels. Scheduled for Phase 5.
+- Financial **reports** (monthly / low-stock / oversold endpoints + Recharts) not started;
+  weighted-average costing + COGS itself is done and tested under the ledger suite.
+- Dashboard, master-table UI, transaction drawers, ledger UI — Phase 4, not started.
 - Offline `PREVENT` overselling is enforceable only at sync time (design constraint,
   `PROJECT_SPEC.md` §6.1, §28.2) — not a defect; must be tested as specified.
 
@@ -124,3 +131,4 @@ progress; commit per phase.
 | 2026-08-29 | Env check: no Docker / no Postgres. Spec → v0.3: dev/test DB = PGlite (embedded PG16). Owner OK'd autonomous build of Phases 1–7. |
 | 2026-08-29 | **Phase 1 done** (commit 07c6fdf). Workspaces, PGlite client + Database interface, SQL migrations 0001–0003 + runner, Fastify + pino + error mapper, /api/health, web scaffold, CI. typecheck/lint/test green. Known limitation: true multi-client concurrency (spec §14.2) needs real Postgres. |
 | 2026-08-29 | **Phase 2 done** (commit 7269c20). shared: cleanData (sku/number/date) + money (satang/micro) + format + domain + zod schemas, 99 unit tests. server: product master CRUD + SKU UNIQUE + UPSERT + categories + units + audit, 18 integration tests. web: minimal products page. Fixed decimal.js import (named `{ Decimal }`, not default) under verbatimModuleSyntax. |
+| 2026-08-29 | **Phase 3 done** (commit 92a5d09). shared: `replayLedger` split into pure `costStep`; transaction zod schemas. server: `services/ledger` (postMovementTx single write path, recomputeStockState, voidDocumentTx, getLedger, currentFyView), `services/documents` (createPurchase/Sale/Return/Adjustment/Opening + voidDocument, all via `runIdempotent`), `services/idempotency` (atomic work + processed_requests), `services/periods` / `services/settings` (+ route) / `services/backdate`, `db/lock` (advisory xact lock), PGlite date-OID parser. Routes: transactions / periods / settings + products ledger & stock. Tests: ledger 10, concurrency 3 (serialized under PGlite, multi-client deferred). 137 green total. |

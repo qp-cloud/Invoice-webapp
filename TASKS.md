@@ -31,52 +31,58 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done (add date)
 - [x] 2026-08-29 — `BACKUP_RECOVERY.md`: scheduling, 8-step pipeline, retention, restore,
       secrets separation, 8 DR scenarios with drills, runbook.
 - [x] 2026-08-29 — `TASKS.md` per-phase detail + `PROGRESS.md` area table updated.
-- [ ] **STOP. Wait for owner confirmation before Phase 1 implementation.**  ◄ HERE NOW
+- [x] 2026-08-29 — **STOP / owner confirmation** — owner OK'd autonomous build of
+      Phases 1–7 (spec Change Log v0.3).
 
 ---
 
-## Phase 1 — Foundation
-- [ ] `git init`; base `.gitignore`; first commit.
-- [ ] npm workspaces: `packages/shared`, `packages/server`, `packages/web`.
-- [ ] TypeScript strict everywhere; shared `tsconfig` base.
-- [ ] `docker-compose.yml` with PostgreSQL 16; documented dev connection string.
-- [ ] Drizzle set up in `packages/server`; migration `0001` skeleton; `migrate` script.
-- [ ] Fastify boots; health route; structured `pino` logging to file.
-- [ ] Central error mapper (typed error code → HTTP + user message); shared `errors.ts`.
-- [ ] CI: install, lint, typecheck, test on every push.
-      **Verify:** `npm test` runs green (empty suites OK), server boots, `0001` applies
-      to a fresh DB, CI pipeline green.
+## Phase 1 — Foundation ✅ 2026-08-29 (commit 07c6fdf)
+- [x] `git init`; base `.gitignore`; first commit.
+- [x] npm workspaces: `packages/shared`, `packages/server`, `packages/web`.
+- [x] TypeScript strict everywhere; shared `tsconfig` base.
+- [x] ~~`docker-compose.yml` with PostgreSQL 16~~ → **PGlite** (embedded PG16) for
+      dev/test; no Docker in env (spec v0.3). `pg` adapter path documented for prod.
+- [x] Hand-written SQL migrations `0001`–`0003` + ordered runner + `migrate` script.
+      (Drizzle Kit codegen not used; Drizzle ORM reserved for typed queries.)
+- [x] Fastify boots; health route; structured `pino` logging.
+- [x] Central error mapper (typed error code → HTTP + user message); shared `errors.ts`.
+- [x] CI: install, lint, typecheck, test on every push.
+      **Verified:** `npm test` green, server boots, migrations apply to fresh DB.
 
-## Phase 2 — cleanData + Product Master
-- [ ] `packages/shared/src/cleanData/`: `sku.ts`, `number.ts`, `date.ts`, `index.ts`.
-- [ ] Unit tests for every `PROJECT_SPEC.md` §22.1 sanitization case.
-- [ ] `units`, `categories`, `products` tables + constraints (SKU UNIQUE, min_stock ≥ 0).
-- [ ] Product CRUD endpoints + zod schemas.
-- [ ] SKU UPSERT helper (match on sanitized SKU).
-- [ ] Web: product list + create/edit form.
-      **Verify:** all sanitization cases pass; DB rejects duplicate SKU; duplicate-create
-      returns typed error; UPSERT updates, never duplicates.
+## Phase 2 — cleanData + Product Master ✅ 2026-08-29 (commit 7269c20)
+- [x] `packages/shared/src/cleanData/`: `sku.ts`, `number.ts`, `date.ts`, `index.ts`.
+- [x] Unit tests for every `PROJECT_SPEC.md` §22.1 sanitization case (74).
+- [x] `units`, `categories`, `products` tables + constraints (SKU UNIQUE, min_stock ≥ 0).
+- [x] Product CRUD endpoints + zod schemas.
+- [x] SKU UPSERT helper (match on sanitized SKU).
+- [x] Web: product list + create/edit form.
+      **Verified:** all sanitization cases pass; DB rejects duplicate SKU (any case);
+      duplicate-create returns typed 409; UPSERT updates, never duplicates.
 
-## Phase 3 — Inventory ledger
-- [ ] `movements` table (signed qty, type enum, status, void fields, idempotency_key,
-      period_id, import fields) + constraints.
-- [ ] `stock_state`, `stock_cost_state` tables.
-- [ ] `replayLedger` pure function in `packages/shared`.
-- [ ] Per-product advisory lock helper; stock-changing ops run in one transaction that
-      locks → reads → checks → writes movement → updates caches.
-- [ ] Endpoints: `POST /purchases`, `/sales`, `/returns`, `/adjustments`,
-      `/documents/:id/void` (all idempotent).
-- [ ] `periods` table + open/close/reopen endpoints; write-path checks honour CLOSED.
-- [ ] `settings.current_fiscal_year` + current-FY sum helpers (dynamic 68/69 labels).
-- [ ] Backdate warning + reason-required-over-threshold; audit entry.
-- [ ] Negative-stock modes (`ALLOW` default / `PREVENT`); settings.
-- [ ] Owner-entered `unit_cost_satang` on customer returns (prefill from linked sale
-      COGS) and on positive adjustments; round-half-up helper in `packages/shared/money`.
-      **Verify:** §5.5 worked example; §23 mock dataset golden master (stock + variance +
-      status per SKU); voided rows excluded; closed-period write rejected; §14.2 A/B
-      concurrency test passes in both modes.
+## Phase 3 — Inventory ledger ✅ 2026-08-29 (commit 92a5d09)
+- [x] `movements` table (signed qty CHECK, type enum-as-CHECK, status, void fields,
+      `idempotency_key`, `period_id`, import fields, `seq` identity, one-active-OPENING
+      partial-unique) + constraints.
+- [x] Merged `stock_state` cache (qty + cost columns); `stock_cost_state` folded in.
+- [x] `replayLedger` + pure `costStep` in `packages/shared`.
+- [x] Per-product advisory lock helper (`pg_advisory_xact_lock`); `postMovementTx` = one
+      write path: lock → read (`FOR UPDATE`) → check → write movement → update cache.
+- [x] Endpoints: `POST /openings`, `/purchases`, `/sales`, `/returns`, `/adjustments`,
+      `/documents/:id/void` — all idempotent (`Idempotency-Key` header).
+- [x] `periods` table + open/close/reopen endpoints; write path honours CLOSED.
+- [x] `settings.current_fiscal_year` + current-FY sum helpers; `GET /fiscal-year`
+      dynamic 68/69 labels.
+- [x] Backdate warning + reason-required-over-threshold; audit entry.
+- [x] Negative-stock modes (`ALLOW` default / `PREVENT`); `PATCH /settings`.
+- [x] Owner-entered `unit_cost_satang` on customer returns and positive adjustments
+      (schema refine enforces it); round-half-up helper in `packages/shared/money`.
+      **Verified:** §5.5 worked example; §23 mock dataset golden master (stock + variance
+      + status + oversold + missingBalance per SKU); §9.3 COGS golden; §11 running
+      balance + void exclusion; closed-period write → 409; backdate reason-required →
+      400 + audit; idempotency replay + different-body 422; §14.2 A/B concurrency both
+      modes (serialized under PGlite — multi-client deferred to real Postgres).
 
-## Phase 4 — Dashboard & master stock table
+## Phase 4 — Dashboard & master stock table  ◄ HERE NOW
 - [ ] `GET /api/dashboard` — pre-aggregated KPI payload (§18.1).
 - [ ] Master table: columns per §19.1; search (SKU, name); filters (category, status,
       low-stock, oversold); sortable; **server-side pagination**.
