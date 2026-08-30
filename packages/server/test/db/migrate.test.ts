@@ -14,12 +14,12 @@ describe('migrations', () => {
 
   it('applies all migrations and is idempotent', async () => {
     const first = await runMigrations(db);
-    expect(first).toEqual(['0001_init', '0002_seed', '0003_periods_fy2569']);
+    expect(first).toEqual(['0001_init', '0002_seed', '0003_periods_fy2569', '0004_tax_invoices']);
 
     const second = await runMigrations(db);
     expect(second).toEqual([]);
 
-    expect(await currentSchemaVersion(db)).toBe('0003_periods_fy2569');
+    expect(await currentSchemaVersion(db)).toBe('0004_tax_invoices');
   });
 
   it('created the core tables', async () => {

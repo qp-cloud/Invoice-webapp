@@ -15,11 +15,13 @@ import { logger } from './logger.js';
 import { authRequired, isUnlocked, SESSION_COOKIE } from './services/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { backupRoutes } from './routes/backups.js';
+import { contactRoutes } from './routes/contacts.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { exportRoutes } from './routes/exports.js';
 import { fiscalYearActionRoutes } from './routes/fiscalYear.js';
 import { healthRoutes } from './routes/health.js';
 import { importRoutes } from './routes/imports.js';
+import { invoiceRoutes } from './routes/invoices.js';
 import { lookupRoutes } from './routes/lookups.js';
 import { periodRoutes } from './routes/periods.js';
 import { productRoutes } from './routes/products.js';
@@ -28,6 +30,7 @@ import { reportRoutes } from './routes/reports.js';
 import { settingsRoutes } from './routes/settings.js';
 import { syncRoutes } from './routes/sync.js';
 import { transactionRoutes } from './routes/transactions.js';
+import { vatReportRoutes } from './routes/vatReports.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -79,6 +82,9 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(fiscalYearActionRoutes, { prefix: '/api' });
   await app.register(reportRoutes, { prefix: '/api' });
   await app.register(reconcileRoutes, { prefix: '/api' });
+  await app.register(contactRoutes, { prefix: '/api' });
+  await app.register(invoiceRoutes, { prefix: '/api' });
+  await app.register(vatReportRoutes, { prefix: '/api' });
   await app.register(importRoutes, { prefix: '/api' });
   await app.register(exportRoutes, { prefix: '/api' });
   await app.register(syncRoutes, { prefix: '/api' });

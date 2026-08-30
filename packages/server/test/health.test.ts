@@ -24,7 +24,7 @@ describe('GET /api/health', () => {
     const body = res.json();
     expect(body.ok).toBe(true);
     expect(body.db).toBe('up');
-    expect(body.schemaVersion).toBe('0003_periods_fy2569');
+    expect(body.schemaVersion).toBe('0004_tax_invoices');
     expect(body.pgVersion).toMatch(/PostgreSQL/);
   });
 

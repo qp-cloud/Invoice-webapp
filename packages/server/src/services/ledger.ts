@@ -24,7 +24,7 @@ export interface PostMovementParams {
   /** Signed delta for ADJUSTMENT. */
   signedDelta?: string;
   unitCostSatang?: number | null;
-  sourceKind: 'OPENING' | 'PURCHASE' | 'SALE' | 'RETURN' | 'ADJUSTMENT';
+  sourceKind: 'OPENING' | 'PURCHASE' | 'SALE' | 'RETURN' | 'ADJUSTMENT' | 'INVOICE';
   sourceId?: string | null;
   sourceRowHash?: string | null;
   localId?: string | null;

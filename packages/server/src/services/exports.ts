@@ -5,6 +5,7 @@ import { getLedger } from './ledger.js';
 import { listProducts } from './products.js';
 import { lowStockReport, monthlyReport, oversoldReport } from './reports.js';
 import { getCurrentFiscalYear } from './settings.js';
+import { vatReport } from './vatReports.js';
 
 export const EXPORT_KINDS = [
   'current-stock',
@@ -14,6 +15,8 @@ export const EXPORT_KINDS = [
   'monthly-report',
   'low-stock',
   'oversold',
+  'vat-purchase',
+  'vat-sales',
 ] as const;
 export type ExportKind = (typeof EXPORT_KINDS)[number];
 
@@ -117,6 +120,32 @@ export async function buildExport(
         sku: r.sku, name: r.name, qty_on_hand: r.qtyOnHand, missing_balance: r.missingBalance,
       }));
       return { buffer: toBuffer(rows, 'oversold'), filename: 'oversold.xlsx' };
+    }
+    case 'vat-purchase':
+    case 'vat-sales': {
+      if (!params.ym) throw new AppError('VALIDATION_FAILED', { userMessage: 'ต้องระบุ ym' });
+      const rk = kind === 'vat-purchase' ? 'purchase' : 'sales';
+      const rep = await vatReport(db, rk, params.ym);
+      const rows = rep.rows.map((r) => ({
+        ลำดับ: r.seq,
+        วันที่: r.issueDate,
+        เลขที่ใบกำกับ: r.invoiceNumber,
+        ชื่อผู้ประกอบการ: r.contactName,
+        เลขประจำตัวผู้เสียภาษี: r.contactTaxId ?? '',
+        สาขา: r.contactBranch ?? '',
+        มูลค่าสินค้าบริการ: thb(r.netSatang),
+        ภาษีมูลค่าเพิ่ม: thb(r.vatSatang),
+        รวม: thb(r.totalSatang),
+      }));
+      rows.push({
+        ลำดับ: '' as unknown as number,
+        วันที่: '', เลขที่ใบกำกับ: '', ชื่อผู้ประกอบการ: 'รวม', เลขประจำตัวผู้เสียภาษี: '', สาขา: '',
+        มูลค่าสินค้าบริการ: thb(rep.totals.netSatang),
+        ภาษีมูลค่าเพิ่ม: thb(rep.totals.vatSatang),
+        รวม: thb(rep.totals.totalSatang),
+      });
+      const label = kind === 'vat-purchase' ? 'ภาษีซื้อ' : 'ภาษีขาย';
+      return { buffer: toBuffer(rows, `${label}-${params.ym}`), filename: `${kind}-${params.ym}.xlsx` };
     }
     default:
       throw new AppError('VALIDATION_FAILED', { userMessage: 'ประเภทการส่งออกไม่ถูกต้อง' });

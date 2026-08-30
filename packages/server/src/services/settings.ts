@@ -30,6 +30,13 @@ const MUTABLE_KEYS = new Set([
   'backup_interval_hours',
   'cloud_backup_enabled',
   'recon_autoheal',
+  'company_name',
+  'company_name_en',
+  'company_tax_id',
+  'company_branch',
+  'company_address',
+  'company_phone',
+  'vat_rate_default',
 ]);
 
 export async function updateSettings(

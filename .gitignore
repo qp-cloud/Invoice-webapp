@@ -23,3 +23,6 @@ packages/server/data/
 packages/server/backups/
 packages/server/pglite-data/
 .env
+
+# stray root-level PGlite/Postgres data dir
+/data/
