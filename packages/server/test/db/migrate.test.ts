@@ -14,12 +14,20 @@ describe('migrations', () => {
 
   it('applies all migrations and is idempotent', async () => {
     const first = await runMigrations(db);
-    expect(first).toEqual(['0001_init', '0002_seed', '0003_periods_fy2569', '0004_tax_invoices']);
+    expect(first).toEqual([
+      '0001_init',
+      '0002_seed',
+      '0003_periods_fy2569',
+      '0004_tax_invoices',
+      '0005_print_settings',
+      '0006_company_profiles',
+      '0007_invoice_print_fields',
+    ]);
 
     const second = await runMigrations(db);
     expect(second).toEqual([]);
 
-    expect(await currentSchemaVersion(db)).toBe('0004_tax_invoices');
+    expect(await currentSchemaVersion(db)).toBe('0007_invoice_print_fields');
   });
 
   it('created the core tables', async () => {
@@ -33,6 +41,7 @@ describe('migrations', () => {
       'purchases', 'sales', 'returns', 'adjustments', 'stock_state', 'recon_alerts',
       'audit_log', 'processed_requests', 'import_batches', 'import_rows', 'backups',
       '_migrations',
+      'company_profiles',
     ]) {
       expect(names).toContain(t);
     }

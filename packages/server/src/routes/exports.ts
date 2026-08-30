@@ -6,6 +6,7 @@ const paramSchema = z.object({ kind: z.enum(EXPORT_KINDS) });
 const querySchema = z.object({
   productId: z.string().uuid().optional(),
   ym: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  companyProfileId: z.string().uuid().optional(),
 });
 
 export async function exportRoutes(app: FastifyInstance): Promise<void> {

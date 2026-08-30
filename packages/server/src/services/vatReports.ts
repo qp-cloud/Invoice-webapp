@@ -28,7 +28,8 @@ export interface VatReport {
  * invoice of the kind whose issue date falls in the month; VOID invoices are excluded
  * from the figures (they carry no tax point).
  */
-export async function vatReport(db: Queryable, kind: VatReportKind, ym: string): Promise<VatReport> {
+export async function vatReport(db: Queryable, kind: VatReportKind, ym: string, companyProfileId?: string): Promise<VatReport> {
+  const company = await getCompanyProfile(db, companyProfileId);
   const docType = kind === 'purchase' ? 'BUY' : 'SELL';
   const start = `${ym}-01`;
   const [y, m] = ym.split('-').map(Number) as [number, number];
@@ -48,9 +49,9 @@ export async function vatReport(db: Queryable, kind: VatReportKind, ym: string):
             contact_branch_snapshot, subtotal_satang, vat_satang, total_satang
      FROM invoices
      WHERE doc_type = $1 AND status = 'CONFIRMED'
-       AND issue_date >= $2::date AND issue_date < $3::date
+       AND issue_date >= $2::date AND issue_date < $3::date AND company_profile_id = $4
      ORDER BY issue_date, invoice_number`,
-    [docType, start, end],
+    [docType, start, end, company.id],
   );
 
   let net = 0;
@@ -79,7 +80,7 @@ export async function vatReport(db: Queryable, kind: VatReportKind, ym: string):
   return {
     kind,
     ym,
-    company: await getCompanyProfile(db),
+    company,
     rows: reportRows,
     totals: { netSatang: net, vatSatang: vat, totalSatang: total, count: reportRows.length },
   };

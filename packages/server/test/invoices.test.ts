@@ -173,6 +173,34 @@ describe('tax invoices + VAT reports (module 0004)', () => {
     expect(xlsx.headers['content-type']).toContain('spreadsheetml');
   });
 
+  it('separates numbering, VAT reports and seller snapshots by company profile', async () => {
+    const companyRes = await post('/api/company-profiles', {
+      code: 'SECOND', name: 'บริษัทที่สอง', nameEn: '', taxId: '0105555555555',
+      branch: 'สำนักงานใหญ่', address: 'กรุงเทพฯ', phone: '',
+    });
+    const company = companyRes.json();
+    const draft = await post('/api/invoices', {
+      docType: 'SELL', companyProfileId: company.id, contactId: customerId, issueDate: TODAY,
+      attention: 'ฝ่ายจัดซื้อ', salesperson: 'สมชาย', dueDate: TODAY,
+      paymentMethod: 'TRANSFER', bankName: 'ธนาคารทดสอบ', paymentAmountSatang: 10700, collector: 'สมหญิง',
+      lines: [{ productId: pA, quantity: '1', unitPriceSatang: 10000, vatRate: 7 }],
+    });
+    const confirmed = await post(`/api/invoices/${draft.json().id}/confirm`, {}, randomUUID());
+    expect(confirmed.json().invoiceNumber).toBe(`SELL-${YEAR}-0001`);
+
+    await app.inject({ method: 'PATCH', url: `/api/company-profiles/${company.id}`, payload: { name: 'ชื่อใหม่ภายหลัง' } });
+    const detail = (await app.inject({ method: 'GET', url: `/api/invoices/${draft.json().id}` })).json();
+    expect(detail.company.name).toBe('บริษัทที่สอง');
+    expect(detail.invoice).toMatchObject({ attention: 'ฝ่ายจัดซื้อ', salesperson: 'สมชาย', paymentMethod: 'TRANSFER', bankName: 'ธนาคารทดสอบ', collector: 'สมหญิง' });
+    expect(detail.lines[0].productUnit).toBe('piece');
+
+    const report = (await app.inject({
+      method: 'GET', url: `/api/vat-reports/sales?ym=${YM}&companyProfileId=${company.id}`,
+    })).json();
+    expect(report.rows).toHaveLength(1);
+    expect(report.company.id).toBe(company.id);
+  });
+
   it('numbering stays gapless when a confirm fails (PREVENT oversell)', async () => {
     await app.inject({ method: 'PATCH', url: '/api/settings', payload: { negative_stock_mode: 'PREVENT' } });
     const bad = await post('/api/invoices', {

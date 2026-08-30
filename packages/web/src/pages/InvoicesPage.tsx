@@ -1,7 +1,7 @@
 import { toSatang } from '@inventory/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiRequestError, exportUrl } from '../api/client.js';
-import type { Contact, InvoiceDetail, InvoiceListRow, Page, Product } from '../api/types.js';
+import type { CompanyProfile, Contact, InvoiceDetail, InvoiceListRow, Page, Product } from '../api/types.js';
 import { dateTh, thb } from '../lib/fmt.js';
 
 type DocType = 'BUY' | 'SELL';
@@ -23,6 +23,8 @@ export function InvoicesPage({ onPrint }: { onPrint: (id: string) => void }): JS
   const [view, setView] = useState<'list' | 'edit'>('list');
   const [rows, setRows] = useState<InvoiceListRow[]>([]);
   const [typeFilter, setTypeFilter] = useState<'' | DocType>('');
+  const [companyFilter, setCompanyFilter] = useState('');
+  const [companies, setCompanies] = useState<CompanyProfile[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -30,24 +32,51 @@ export function InvoicesPage({ onPrint }: { onPrint: (id: string) => void }): JS
   // editor state
   const [editId, setEditId] = useState<string | null>(null);
   const [docType, setDocType] = useState<DocType>('BUY');
+  const [companyProfileId, setCompanyProfileId] = useState('');
   const [contactId, setContactId] = useState('');
   const [issueDate, setIssueDate] = useState(TODAY());
   const [referenceNo, setReferenceNo] = useState('');
+  const [attention, setAttention] = useState('');
+  const [salesperson, setSalesperson] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [note, setNote] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'' | 'CHEQUE' | 'TRANSFER' | 'CASH'>('');
+  const [bankName, setBankName] = useState('');
+  const [bankBranch, setBankBranch] = useState('');
+  const [chequeNo, setChequeNo] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
+  const [paymentAmountThb, setPaymentAmountThb] = useState('');
+  const [collector, setCollector] = useState('');
   const [lines, setLines] = useState<EditLine[]>([blankLine()]);
   const [busy, setBusy] = useState(false);
 
   const loadList = useCallback(() => {
     const q = new URLSearchParams({ pageSize: '100' });
     if (typeFilter) q.set('docType', typeFilter);
+    if (companyFilter) q.set('companyProfileId', companyFilter);
     api.get<Page<InvoiceListRow>>(`/invoices?${q}`).then((p) => setRows(p.rows)).catch((e) => setError(String(e)));
-  }, [typeFilter]);
+  }, [typeFilter, companyFilter]);
 
   useEffect(() => {
     if (view === 'list') loadList();
   }, [view, loadList]);
   useEffect(() => {
-    api.get<Page<Product>>('/products?pageSize=1000&sort=sku').then((p) => setProducts(p.rows)).catch(() => undefined);
-    api.get<Page<Contact>>('/contacts?pageSize=500').then((p) => setContacts(p.rows)).catch(() => undefined);
+    // Server caps pageSize at 200 (zPagination), so walk every page.
+    const fetchAll = async <T,>(path: string): Promise<T[]> => {
+      const out: T[] = [];
+      const sep = path.includes('?') ? '&' : '?';
+      for (let page = 1; ; page += 1) {
+        const p = await api.get<Page<T>>(`${path}${sep}page=${page}&pageSize=200`);
+        out.push(...p.rows);
+        if (page >= p.totalPages) return out;
+      }
+    };
+    fetchAll<Product>('/products?sort=sku').then(setProducts).catch((e) => setError(String(e)));
+    fetchAll<Contact>('/contacts').then(setContacts).catch((e) => setError(String(e)));
+    api.get<CompanyProfile[]>('/company-profiles').then((items) => {
+      setCompanies(items);
+      setCompanyProfileId((current) => current || items[0]?.id || '');
+    }).catch((e) => setError(String(e)));
   }, []);
 
   const contactChoices = contacts.filter(
@@ -70,9 +99,13 @@ export function InvoicesPage({ onPrint }: { onPrint: (id: string) => void }): JS
   const startNew = (t: DocType): void => {
     setEditId(null);
     setDocType(t);
+    setCompanyProfileId(companies[0]?.id ?? '');
     setContactId('');
     setIssueDate(TODAY());
     setReferenceNo('');
+    setAttention(''); setSalesperson(''); setDueDate(''); setNote('');
+    setPaymentMethod(''); setBankName(''); setBankBranch(''); setChequeNo('');
+    setPaymentDate(''); setPaymentAmountThb(''); setCollector('');
     setLines([blankLine()]);
     setError(null);
     setView('edit');
@@ -83,9 +116,21 @@ export function InvoicesPage({ onPrint }: { onPrint: (id: string) => void }): JS
     const d = await api.get<InvoiceDetail>(`/invoices/${id}`);
     setEditId(id);
     setDocType(d.invoice.docType);
+    setCompanyProfileId(d.invoice.companyProfileId);
     setContactId(d.invoice.contactId);
     setIssueDate(d.invoice.issueDate);
     setReferenceNo(d.invoice.referenceNo ?? '');
+    setAttention(d.invoice.attention ?? '');
+    setSalesperson(d.invoice.salesperson ?? '');
+    setDueDate(d.invoice.dueDate ?? '');
+    setNote(d.invoice.note ?? '');
+    setPaymentMethod(d.invoice.paymentMethod ?? '');
+    setBankName(d.invoice.bankName ?? '');
+    setBankBranch(d.invoice.bankBranch ?? '');
+    setChequeNo(d.invoice.chequeNo ?? '');
+    setPaymentDate(d.invoice.paymentDate ?? '');
+    setPaymentAmountThb(d.invoice.paymentAmountSatang == null ? '' : (d.invoice.paymentAmountSatang / 100).toString());
+    setCollector(d.invoice.collector ?? '');
     setLines(
       d.lines.length
         ? d.lines.map((l) => ({
@@ -114,9 +159,16 @@ export function InvoicesPage({ onPrint }: { onPrint: (id: string) => void }): JS
     setError(null);
     setBusy(true);
     try {
-      const body = { docType, contactId, issueDate, referenceNo: referenceNo || undefined, lines: payloadLines() };
+      const details = {
+        referenceNo: referenceNo || undefined, attention: attention || undefined, salesperson: salesperson || undefined,
+        dueDate: dueDate || undefined, note: note || undefined, paymentMethod: paymentMethod || undefined,
+        bankName: bankName || undefined, bankBranch: bankBranch || undefined, chequeNo: chequeNo || undefined,
+        paymentDate: paymentDate || undefined, paymentAmountSatang: paymentAmountThb ? toSatang(paymentAmountThb) : undefined,
+        collector: collector || undefined,
+      };
+      const body = { docType, companyProfileId, contactId, issueDate, ...details, lines: payloadLines() };
       let id = editId;
-      if (id) await api.patch(`/invoices/${id}`, { contactId, issueDate, referenceNo: referenceNo || undefined, lines: body.lines });
+      if (id) await api.patch(`/invoices/${id}`, { companyProfileId, contactId, issueDate, ...details, lines: body.lines });
       else {
         const created = await api.post<{ id: string }>('/invoices', body);
         id = created.id;
@@ -157,7 +209,23 @@ export function InvoicesPage({ onPrint }: { onPrint: (id: string) => void }): JS
           </button>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-3 rounded-lg border bg-white p-4 text-sm">
+        <div className="mt-3 grid grid-cols-2 gap-3 rounded-lg border bg-white p-4 text-sm sm:grid-cols-4">
+          <label className="flex flex-col">เรียน / Attn.<input className="mt-1 rounded border px-2 py-1" value={attention} onChange={(e) => setAttention(e.target.value)} /></label>
+          <label className="flex flex-col">พนักงานขาย / Sales<input className="mt-1 rounded border px-2 py-1" value={salesperson} onChange={(e) => setSalesperson(e.target.value)} /></label>
+          <label className="flex flex-col">วันครบกำหนด / Due date<input type="date" className="mt-1 rounded border px-2 py-1" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></label>
+          <label className="flex flex-col">ผู้รับเงิน / Collector<input className="mt-1 rounded border px-2 py-1" value={collector} onChange={(e) => setCollector(e.target.value)} /></label>
+          <label className="col-span-2 flex flex-col sm:col-span-4">หมายเหตุ / Remark<textarea rows={2} className="mt-1 rounded border px-2 py-1" value={note} onChange={(e) => setNote(e.target.value)} /></label>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 rounded-lg border bg-white p-4 text-sm sm:grid-cols-4">
+          <label className="flex flex-col">
+            บริษัทผู้ออกเอกสาร *
+            <select className="mt-1 rounded border border-slate-400 px-2 py-1 font-medium" value={companyProfileId}
+              onChange={(e) => setCompanyProfileId(e.target.value)}>
+              <option value="">— เลือกบริษัท —</option>
+              {companies.map((company) => <option key={company.id} value={company.id}>{company.code} · {company.name}</option>)}
+            </select>
+          </label>
           <label className="flex flex-col">
             {docType === 'BUY' ? 'ผู้ขาย' : 'ลูกค้า'} *
             <select className="mt-1 rounded border px-2 py-1" value={contactId} onChange={(e) => setContactId(e.target.value)}>
@@ -244,14 +312,23 @@ export function InvoicesPage({ onPrint }: { onPrint: (id: string) => void }): JS
           <div className="mt-1 flex justify-between border-t pt-1 font-semibold"><span>ยอดสุทธิ</span><span>{thb(totals.total)}</span></div>
         </div>
 
+        <div className="mt-3 grid grid-cols-2 gap-3 rounded-lg border bg-white p-4 text-sm sm:grid-cols-4">
+          <label className="flex flex-col">ชำระโดย / Paid by<select className="mt-1 rounded border px-2 py-1" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as typeof paymentMethod)}><option value="">— ยังไม่ระบุ —</option><option value="CHEQUE">เช็ค / Cheque</option><option value="TRANSFER">เงินโอน / Transfer</option><option value="CASH">เงินสด / Cash</option></select></label>
+          <label className="flex flex-col">ธนาคาร / Bank<input className="mt-1 rounded border px-2 py-1" value={bankName} onChange={(e) => setBankName(e.target.value)} /></label>
+          <label className="flex flex-col">สาขา / Branch<input className="mt-1 rounded border px-2 py-1" value={bankBranch} onChange={(e) => setBankBranch(e.target.value)} /></label>
+          <label className="flex flex-col">เลขที่เช็ค / Cheque no.<input className="mt-1 rounded border px-2 py-1" value={chequeNo} onChange={(e) => setChequeNo(e.target.value)} /></label>
+          <label className="flex flex-col">วันที่ชำระ / Payment date<input type="date" className="mt-1 rounded border px-2 py-1" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} /></label>
+          <label className="flex flex-col">จำนวนเงิน / Amount (฿)<input inputMode="decimal" className="mt-1 rounded border px-2 py-1 text-right" value={paymentAmountThb} onChange={(e) => setPaymentAmountThb(e.target.value)} /></label>
+        </div>
+
         {error && <p className="mt-3 text-red-600">{error}</p>}
 
         <div className="mt-4 flex gap-2">
-          <button type="button" disabled={busy || !contactId} onClick={() => save(false)}
+          <button type="button" disabled={busy || !companyProfileId || !contactId} onClick={() => save(false)}
             className="rounded border px-4 py-2 text-sm disabled:opacity-50">
             บันทึกร่าง
           </button>
-          <button type="button" disabled={busy || !contactId || payloadLines().length === 0} onClick={() => save(true)}
+          <button type="button" disabled={busy || !companyProfileId || !contactId || payloadLines().length === 0} onClick={() => save(true)}
             className="rounded bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50">
             ยืนยัน + พิมพ์
           </button>
@@ -270,13 +347,17 @@ export function InvoicesPage({ onPrint }: { onPrint: (id: string) => void }): JS
         </div>
       </div>
 
-      <div className="mt-3 flex gap-2 text-sm">
+      <div className="mt-3 flex flex-wrap gap-2 text-sm">
         {(['', 'BUY', 'SELL'] as const).map((t) => (
           <button key={t} type="button" onClick={() => setTypeFilter(t)}
             className={`rounded border px-3 py-1 ${typeFilter === t ? 'bg-slate-900 text-white' : ''}`}>
             {t === '' ? 'ทั้งหมด' : t === 'BUY' ? 'ซื้อ' : 'ขาย'}
           </button>
         ))}
+        <select className="ml-auto rounded border px-3 py-1" value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)}>
+          <option value="">ทุกบริษัท</option>
+          {companies.map((company) => <option key={company.id} value={company.id}>{company.code} · {company.name}</option>)}
+        </select>
       </div>
 
       {error && <p className="mt-3 text-red-600">{error}</p>}
@@ -286,6 +367,7 @@ export function InvoicesPage({ onPrint }: { onPrint: (id: string) => void }): JS
           <tr className="border-b text-left text-slate-500">
             <th className="px-2 py-1">เลขที่</th>
             <th className="px-2">ประเภท</th>
+            <th className="px-2">บริษัท</th>
             <th className="px-2">วันที่</th>
             <th className="px-2">คู่ค้า</th>
             <th className="px-2 text-right">ยอดสุทธิ</th>
@@ -298,6 +380,7 @@ export function InvoicesPage({ onPrint }: { onPrint: (id: string) => void }): JS
             <tr key={r.id} className="border-b">
               <td className="px-2 py-1 font-mono">{r.invoiceNumber ?? '—'}</td>
               <td className="px-2">{r.docType === 'BUY' ? 'ซื้อ' : 'ขาย'}</td>
+              <td className="px-2">{r.companyName}</td>
               <td className="px-2">{dateTh(r.issueDate)}</td>
               <td className="px-2">{r.contactName}</td>
               <td className="px-2 text-right tabular-nums">{thb(r.totalSatang)}</td>
@@ -318,7 +401,7 @@ export function InvoicesPage({ onPrint }: { onPrint: (id: string) => void }): JS
             </tr>
           ))}
           {rows.length === 0 && (
-            <tr><td colSpan={7} className="py-6 text-center text-slate-400">ยังไม่มีใบกำกับ</td></tr>
+            <tr><td colSpan={8} className="py-6 text-center text-slate-400">ยังไม่มีใบกำกับ</td></tr>
           )}
         </tbody>
       </table>

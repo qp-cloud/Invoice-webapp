@@ -171,6 +171,7 @@ export interface Invoice {
   id: string;
   docType: 'BUY' | 'SELL';
   invoiceNumber: string | null;
+  companyProfileId: string;
   contactId: string;
   issueDate: string;
   status: 'DRAFT' | 'CONFIRMED' | 'VOID';
@@ -182,8 +183,24 @@ export interface Invoice {
   contactTaxIdSnapshot: string | null;
   contactBranchSnapshot: string | null;
   contactAddressSnapshot: string | null;
+  companyNameSnapshot: string | null;
+  companyNameEnSnapshot: string | null;
+  companyTaxIdSnapshot: string | null;
+  companyBranchSnapshot: string | null;
+  companyAddressSnapshot: string | null;
+  companyPhoneSnapshot: string | null;
   referenceNo: string | null;
   note: string | null;
+  attention: string | null;
+  salesperson: string | null;
+  dueDate: string | null;
+  paymentMethod: 'CHEQUE' | 'TRANSFER' | 'CASH' | null;
+  bankName: string | null;
+  bankBranch: string | null;
+  chequeNo: string | null;
+  paymentDate: string | null;
+  paymentAmountSatang: number | null;
+  collector: string | null;
   confirmedAt: string | null;
   voidedAt: string | null;
   voidReason: string | null;
@@ -193,6 +210,7 @@ export interface Invoice {
 
 export interface InvoiceListRow extends Invoice {
   contactName: string;
+  companyName: string;
 }
 
 export interface InvoiceLine {
@@ -201,6 +219,7 @@ export interface InvoiceLine {
   productId: string;
   productSku?: string;
   productName?: string;
+  productUnit?: string;
   description: string | null;
   quantity: string;
   unitPriceSatang: number;
@@ -211,12 +230,33 @@ export interface InvoiceLine {
 }
 
 export interface CompanyProfile {
+  id: string;
+  code: string;
   name: string;
   nameEn: string;
   taxId: string;
   branch: string;
   address: string;
   phone: string;
+  printSettings: PrintSettings;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PrintSettings {
+  paperSize: 'A4' | 'A5';
+  marginMm: number;
+  fontPx: number;
+  logoDataUrl: string;
+  showLogo: boolean;
+  showEnLabels: boolean;
+  showSignatures: boolean;
+  showCopyBadge: boolean;
+  showReference: boolean;
+  showVatLine: boolean;
+  footerText: string;
+  showBahtWords: boolean;
 }
 
 export interface InvoiceDetail {
@@ -224,6 +264,7 @@ export interface InvoiceDetail {
   lines: InvoiceLine[];
   contact: Contact | null;
   company: CompanyProfile;
+  printSettings: PrintSettings;
 }
 
 export interface VatReportRow {

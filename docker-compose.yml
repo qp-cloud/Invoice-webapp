@@ -17,7 +17,7 @@ services:
       BACKUP_DIR: /backups
       WEB_DIST_DIR: /app/packages/web/dist
     volumes:
-      - inventory-data:/data
+      - ./packages/server/data:/data
       - inventory-backups:/backups
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]

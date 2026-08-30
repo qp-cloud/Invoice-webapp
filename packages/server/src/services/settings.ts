@@ -1,4 +1,4 @@
-import { AppError } from '@inventory/shared';
+import { AppError, printSettingsSchema } from '@inventory/shared';
 import type { Queryable } from '../db/client.js';
 import { writeAudit } from './audit.js';
 
@@ -37,6 +37,7 @@ const MUTABLE_KEYS = new Set([
   'company_address',
   'company_phone',
   'vat_rate_default',
+  'print_settings',
 ]);
 
 export async function updateSettings(
@@ -52,6 +53,13 @@ export async function updateSettings(
   }
   if (patch.negative_stock_mode !== undefined && !['ALLOW', 'PREVENT'].includes(String(patch.negative_stock_mode))) {
     throw new AppError('VALIDATION_FAILED', { userMessage: 'โหมดสต็อกติดลบไม่ถูกต้อง' });
+  }
+  if (patch.print_settings !== undefined) {
+    const r = printSettingsSchema.safeParse(patch.print_settings);
+    if (!r.success) {
+      throw new AppError('VALIDATION_FAILED', { userMessage: 'ตั้งค่ารูปแบบใบกำกับไม่ถูกต้อง' });
+    }
+    patch.print_settings = r.data; // normalised (defaults filled, numbers coerced)
   }
   for (const [key, value] of Object.entries(patch)) {
     const before = await db.query<{ value: unknown }>('SELECT value FROM settings WHERE key = $1', [key]);

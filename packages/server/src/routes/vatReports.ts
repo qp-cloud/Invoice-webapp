@@ -8,7 +8,7 @@ const kindParam = z.object({ kind: z.enum(['purchase', 'sales']) });
 export async function vatReportRoutes(app: FastifyInstance): Promise<void> {
   app.get('/vat-reports/:kind', async (req) => {
     const { kind } = kindParam.parse(req.params);
-    const { ym } = vatReportQuerySchema.parse(req.query);
-    return vatReport(app.db, kind, ym);
+    const { ym, companyProfileId } = vatReportQuerySchema.parse(req.query);
+    return vatReport(app.db, kind, ym, companyProfileId);
   });
 }

@@ -16,6 +16,7 @@ import { authRequired, isUnlocked, SESSION_COOKIE } from './services/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { backupRoutes } from './routes/backups.js';
 import { contactRoutes } from './routes/contacts.js';
+import { companyProfileRoutes } from './routes/companyProfiles.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { exportRoutes } from './routes/exports.js';
 import { fiscalYearActionRoutes } from './routes/fiscalYear.js';
@@ -83,6 +84,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(reportRoutes, { prefix: '/api' });
   await app.register(reconcileRoutes, { prefix: '/api' });
   await app.register(contactRoutes, { prefix: '/api' });
+  await app.register(companyProfileRoutes, { prefix: '/api' });
   await app.register(invoiceRoutes, { prefix: '/api' });
   await app.register(vatReportRoutes, { prefix: '/api' });
   await app.register(importRoutes, { prefix: '/api' });

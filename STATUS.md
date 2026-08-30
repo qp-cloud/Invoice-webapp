@@ -24,7 +24,7 @@ buys Bangkok, sells to Lao garages across the border). Local-first, single proce
 
 | suite | count | notes |
 | --- | --- | --- |
-| shared | 105 | cleanData / money / vat / domain / replayLedger |
+| shared | 110 | cleanData / money / vat / domain / replayLedger / bahtText |
 | server | 81 (+2 skipped) | 83 under `TEST_PG=1` (adds the scale/concurrency stress suite) |
 | web | 5 | render smoke + offline sync engine |
 
@@ -40,6 +40,7 @@ buys Bangkok, sells to Lao garages across the border). Local-first, single proce
 0003_periods_fy2569  12 monthly periods (2026), all OPEN
 0004_tax_invoices    contacts, invoices + invoice_items, doc_counters, company profile,
                      movements.source_kind += INVOICE, products += vat_applicable/prices
+0005_print_settings  print_settings JSON blob in settings (invoice print layout)
 ```
 
 Runner applies any new `NNNN_*.sql` on boot, in one transaction, idempotent.
@@ -99,7 +100,11 @@ Runner applies any new `NNNN_*.sql` on boot, in one transaction, idempotent.
   `/api/exports/vat-{purchase,sales}.xlsx`.
 - **Print** — `InvoicePrint` full-screen ใบกำกับภาษี: seller from the company profile,
   buyer from the invoice snapshot, TH/EN labels, ต้นฉบับ / สำเนา switch, browser print
-  (Save-as-PDF), `@media print` hides the chrome.
+  (Save-as-PDF), `@media print` hides the chrome. **Customisable** (migration `0005`) via
+  an inline ตั้งค่ารูปแบบพิมพ์ panel with live preview: A4/A5, margin, font px, header
+  logo, section toggles (EN labels, badge, ref line, VAT line, signatures), baht-in-words
+  (`bahtText`), free-text footer — stored as one `print_settings` blob in `settings`,
+  applies to every invoice.
 - **Web** — nav tabs **ใบกำกับภาษี** (list + multi-line editor), **ผู้ติดต่อ**,
   **รายงานภาษี** (+ collapsible company-profile editor).
 - **Company profile** — `company_name / _en / _tax_id / _branch / _address / _phone` in
@@ -155,7 +160,6 @@ use; a passphrase change invalidates existing backups — take a fresh one after
 
 - **Company profile must be filled** before printing real invoices (tax id, address) —
   รายงานภาษี tab → "ตั้งค่าข้อมูลบริษัท".
-- No amount-in-Thai-words on the printed invoice (บาทถ้วน) — add if the accountant wants it.
 - VAT report lists CONFIRMED only; VOID invoices are excluded from the figures.
 - Phase 8 gaps: **cloud backup** (open Q #15, no provider) and **Windows Task Scheduler
   auto-backup** (open Q #16) — local encrypted backups work, off-machine copy is manual.

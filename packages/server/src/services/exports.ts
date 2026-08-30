@@ -32,7 +32,7 @@ const thb = (satang: number): number => Math.round(satang) / 100;
 export async function buildExport(
   db: Database,
   kind: ExportKind,
-  params: { productId?: string; ym?: string },
+  params: { productId?: string; ym?: string; companyProfileId?: string },
 ): Promise<{ buffer: Buffer; filename: string }> {
   switch (kind) {
     case 'current-stock': {
@@ -125,7 +125,7 @@ export async function buildExport(
     case 'vat-sales': {
       if (!params.ym) throw new AppError('VALIDATION_FAILED', { userMessage: 'ต้องระบุ ym' });
       const rk = kind === 'vat-purchase' ? 'purchase' : 'sales';
-      const rep = await vatReport(db, rk, params.ym);
+      const rep = await vatReport(db, rk, params.ym, params.companyProfileId);
       const rows = rep.rows.map((r) => ({
         ลำดับ: r.seq,
         วันที่: r.issueDate,

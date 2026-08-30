@@ -16,7 +16,7 @@ import type { Database, Queryable } from '../db/client.js';
 import { camelize, camelizeRows } from '../db/rows.js';
 import { writeAudit } from './audit.js';
 import { assertContactForDoc, getContact } from './contacts.js';
-import { getCompanyProfile } from './companyProfile.js';
+import { assertActiveCompanyProfile, getCompanyProfile } from './companyProfile.js';
 import { type IdempotentResult, runIdempotent } from './idempotency.js';
 import { postMovementTx, recomputeStockState } from './ledger.js';
 import { assertPeriodOpen } from './periods.js';
@@ -30,6 +30,7 @@ export interface InvoiceLine {
   productId: string;
   productSku?: string;
   productName?: string;
+  productUnit?: string;
   description: string | null;
   quantity: string;
   unitPriceSatang: number;
@@ -43,6 +44,7 @@ export interface Invoice {
   id: string;
   docType: DocType;
   invoiceNumber: string | null;
+  companyProfileId: string;
   contactId: string;
   issueDate: string;
   status: 'DRAFT' | 'CONFIRMED' | 'VOID';
@@ -54,8 +56,24 @@ export interface Invoice {
   contactTaxIdSnapshot: string | null;
   contactBranchSnapshot: string | null;
   contactAddressSnapshot: string | null;
+  companyNameSnapshot: string | null;
+  companyNameEnSnapshot: string | null;
+  companyTaxIdSnapshot: string | null;
+  companyBranchSnapshot: string | null;
+  companyAddressSnapshot: string | null;
+  companyPhoneSnapshot: string | null;
   referenceNo: string | null;
   note: string | null;
+  attention: string | null;
+  salesperson: string | null;
+  dueDate: string | null;
+  paymentMethod: 'CHEQUE' | 'TRANSFER' | 'CASH' | null;
+  bankName: string | null;
+  bankBranch: string | null;
+  chequeNo: string | null;
+  paymentDate: string | null;
+  paymentAmountSatang: number | null;
+  collector: string | null;
   confirmedAt: string | null;
   voidedAt: string | null;
   voidReason: string | null;
@@ -71,6 +89,7 @@ function shapeInvoice(r: Record<string, unknown>): Invoice {
     id: c.id as string,
     docType: c.docType as DocType,
     invoiceNumber: (c.invoiceNumber as string | null) ?? null,
+    companyProfileId: c.companyProfileId as string,
     contactId: c.contactId as string,
     issueDate: c.issueDate as string,
     status: c.status as Invoice['status'],
@@ -82,8 +101,24 @@ function shapeInvoice(r: Record<string, unknown>): Invoice {
     contactTaxIdSnapshot: (c.contactTaxIdSnapshot as string | null) ?? null,
     contactBranchSnapshot: (c.contactBranchSnapshot as string | null) ?? null,
     contactAddressSnapshot: (c.contactAddressSnapshot as string | null) ?? null,
+    companyNameSnapshot: (c.companyNameSnapshot as string | null) ?? null,
+    companyNameEnSnapshot: (c.companyNameEnSnapshot as string | null) ?? null,
+    companyTaxIdSnapshot: (c.companyTaxIdSnapshot as string | null) ?? null,
+    companyBranchSnapshot: (c.companyBranchSnapshot as string | null) ?? null,
+    companyAddressSnapshot: (c.companyAddressSnapshot as string | null) ?? null,
+    companyPhoneSnapshot: (c.companyPhoneSnapshot as string | null) ?? null,
     referenceNo: (c.referenceNo as string | null) ?? null,
     note: (c.note as string | null) ?? null,
+    attention: (c.attention as string | null) ?? null,
+    salesperson: (c.salesperson as string | null) ?? null,
+    dueDate: (c.dueDate as string | null) ?? null,
+    paymentMethod: (c.paymentMethod as Invoice['paymentMethod']) ?? null,
+    bankName: (c.bankName as string | null) ?? null,
+    bankBranch: (c.bankBranch as string | null) ?? null,
+    chequeNo: (c.chequeNo as string | null) ?? null,
+    paymentDate: (c.paymentDate as string | null) ?? null,
+    paymentAmountSatang: c.paymentAmountSatang == null ? null : num(c.paymentAmountSatang),
+    collector: (c.collector as string | null) ?? null,
     confirmedAt: (c.confirmedAt as string | null) ?? null,
     voidedAt: (c.voidedAt as string | null) ?? null,
     voidReason: (c.voidReason as string | null) ?? null,
@@ -136,17 +171,25 @@ async function replaceLines(
 
 export async function createInvoice(db: Database, input: CreateInvoiceInput): Promise<Invoice> {
   await assertContactForDoc(db, input.contactId, input.docType);
+  const companyProfileId = input.companyProfileId ?? (await getCompanyProfile(db)).id;
+  await assertActiveCompanyProfile(db, companyProfileId);
   const id = randomUUID();
   return db.transaction(async (tx) => {
     await tx.query(
-      `INSERT INTO invoices (id, doc_type, contact_id, issue_date, reference_no, note)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
-      [id, input.docType, input.contactId, input.issueDate, input.referenceNo ?? null, input.note ?? null],
+      `INSERT INTO invoices
+         (id, doc_type, company_profile_id, contact_id, issue_date, reference_no, note,
+          attention, salesperson, due_date, payment_method, bank_name, bank_branch,
+          cheque_no, payment_date, payment_amount_satang, collector)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      [id, input.docType, companyProfileId, input.contactId, input.issueDate, input.referenceNo ?? null, input.note ?? null,
+        input.attention ?? null, input.salesperson ?? null, input.dueDate ?? null, input.paymentMethod ?? null,
+        input.bankName ?? null, input.bankBranch ?? null, input.chequeNo ?? null, input.paymentDate ?? null,
+        input.paymentAmountSatang ?? null, input.collector ?? null],
     );
     if (input.lines && input.lines.length > 0) await replaceLines(tx, id, input.lines);
     await writeAudit(tx, {
       action: 'CREATE', entity: 'invoice_draft', entityId: id,
-      newValue: { docType: input.docType, contactId: input.contactId, lines: input.lines?.length ?? 0 },
+      newValue: { docType: input.docType, companyProfileId, contactId: input.contactId, lines: input.lines?.length ?? 0 },
     });
     const row = await tx.query(`SELECT * FROM invoices WHERE id = $1`, [id]);
     return shapeInvoice(row.rows[0]!);
@@ -168,11 +211,15 @@ export async function updateInvoice(
       throw new AppError('CONFLICT', { userMessage: 'แก้ไขได้เฉพาะฉบับร่าง (DRAFT)' });
     }
     if (patch.contactId) await assertContactForDoc(tx, patch.contactId, cur.rows[0].doc_type);
+    if (patch.companyProfileId) await assertActiveCompanyProfile(tx, patch.companyProfileId);
 
     const sets: string[] = [];
     const params: unknown[] = [];
     const col: Record<string, string> = {
-      contactId: 'contact_id', issueDate: 'issue_date', referenceNo: 'reference_no', note: 'note',
+      companyProfileId: 'company_profile_id', contactId: 'contact_id', issueDate: 'issue_date', referenceNo: 'reference_no', note: 'note',
+      attention: 'attention', salesperson: 'salesperson', dueDate: 'due_date', paymentMethod: 'payment_method',
+      bankName: 'bank_name', bankBranch: 'bank_branch', chequeNo: 'cheque_no', paymentDate: 'payment_date',
+      paymentAmountSatang: 'payment_amount_satang', collector: 'collector',
     };
     for (const [k, c] of Object.entries(col)) {
       const v = (patch as Record<string, unknown>)[k];
@@ -196,6 +243,7 @@ export interface InvoiceDetail {
   lines: InvoiceLine[];
   contact: Awaited<ReturnType<typeof getContact>>;
   company: Awaited<ReturnType<typeof getCompanyProfile>>;
+  printSettings: Awaited<ReturnType<typeof getCompanyProfile>>['printSettings'];
 }
 
 export async function getInvoiceDetail(db: Database, id: string): Promise<InvoiceDetail> {
@@ -204,7 +252,7 @@ export async function getInvoiceDetail(db: Database, id: string): Promise<Invoic
   const invoice = shapeInvoice(head.rows[0]);
 
   const lineRows = await db.query<Record<string, unknown>>(
-    `SELECT ii.*, p.sku AS product_sku, p.name AS product_name
+    `SELECT ii.*, p.sku AS product_sku, p.name AS product_name, p.unit_code AS product_unit
      FROM invoice_items ii JOIN products p ON p.id = ii.product_id
      WHERE ii.invoice_id = $1 ORDER BY ii.line_no`,
     [id],
@@ -215,6 +263,7 @@ export async function getInvoiceDetail(db: Database, id: string): Promise<Invoic
     productId: c.productId as string,
     productSku: c.productSku as string,
     productName: c.productName as string,
+    productUnit: c.productUnit as string,
     description: (c.description as string | null) ?? null,
     quantity: new Decimal(String(c.quantity ?? '0')).toString(),
     unitPriceSatang: num(c.unitPriceSatang),
@@ -224,16 +273,27 @@ export async function getInvoiceDetail(db: Database, id: string): Promise<Invoic
     lineTotalSatang: num(c.lineTotalSatang),
   }));
 
+  const liveCompany = await getCompanyProfile(db, invoice.companyProfileId);
+  const company = invoice.status === 'DRAFT' ? liveCompany : {
+    ...liveCompany,
+    name: invoice.companyNameSnapshot ?? liveCompany.name,
+    nameEn: invoice.companyNameEnSnapshot ?? liveCompany.nameEn,
+    taxId: invoice.companyTaxIdSnapshot ?? liveCompany.taxId,
+    branch: invoice.companyBranchSnapshot ?? liveCompany.branch,
+    address: invoice.companyAddressSnapshot ?? liveCompany.address,
+    phone: invoice.companyPhoneSnapshot ?? liveCompany.phone,
+  };
   return {
     invoice,
     lines,
     contact: await getContact(db, invoice.contactId),
-    company: await getCompanyProfile(db),
+    company,
+    printSettings: liveCompany.printSettings,
   };
 }
 
 export interface InvoicePage {
-  rows: (Invoice & { contactName: string })[];
+  rows: (Invoice & { contactName: string; companyName: string })[];
   page: number;
   pageSize: number;
   total: number;
@@ -248,6 +308,7 @@ export async function listInvoices(db: Queryable, q: ListInvoicesQuery): Promise
     where.push(clause.replace('?', `$${params.length}`));
   };
   if (q.docType) add('i.doc_type = ?', q.docType);
+  if (q.companyProfileId) add('i.company_profile_id = ?', q.companyProfileId);
   if (q.status) add('i.status = ?', q.status);
   if (q.contactId) add('i.contact_id = ?', q.contactId);
   if (q.from) add('i.issue_date >= ?', q.from);
@@ -265,8 +326,8 @@ export async function listInvoices(db: Queryable, q: ListInvoicesQuery): Promise
   const total = Number(countRes.rows[0]?.n ?? 0);
   const offset = (q.page - 1) * q.pageSize;
   const listRes = await db.query<Record<string, unknown>>(
-    `SELECT i.*, c.name AS contact_name
-     FROM invoices i JOIN contacts c ON c.id = i.contact_id
+    `SELECT i.*, c.name AS contact_name, cp.name AS company_name
+     FROM invoices i JOIN contacts c ON c.id = i.contact_id JOIN company_profiles cp ON cp.id = i.company_profile_id
      ${whereSql}
      ORDER BY i.issue_date DESC, i.created_at DESC
      LIMIT ${q.pageSize} OFFSET ${offset}`,
@@ -276,6 +337,7 @@ export async function listInvoices(db: Queryable, q: ListInvoicesQuery): Promise
     rows: listRes.rows.map((r) => ({
       ...shapeInvoice(r),
       contactName: String((camelize<Record<string, unknown>>(r).contactName) ?? ''),
+      companyName: String((camelize<Record<string, unknown>>(r).companyName) ?? ''),
     })),
     page: q.page,
     pageSize: q.pageSize,
@@ -284,13 +346,13 @@ export async function listInvoices(db: Queryable, q: ListInvoicesQuery): Promise
   };
 }
 
-async function nextInvoiceNumber(tx: Queryable, docType: DocType, isoDate: string): Promise<string> {
+async function nextInvoiceNumber(tx: Queryable, companyProfileId: string, docType: DocType, isoDate: string): Promise<string> {
   const year = Number(isoDate.slice(0, 4));
   const res = await tx.query<{ assigned: string }>(
-    `INSERT INTO doc_counters (doc_type, year, next_seq) VALUES ($1, $2, 2)
-     ON CONFLICT (doc_type, year) DO UPDATE SET next_seq = doc_counters.next_seq + 1
+    `INSERT INTO doc_counters (company_profile_id, doc_type, year, next_seq) VALUES ($1, $2, $3, 2)
+     ON CONFLICT (company_profile_id, doc_type, year) DO UPDATE SET next_seq = doc_counters.next_seq + 1
      RETURNING (doc_counters.next_seq - 1)::text AS assigned`,
-    [docType, year],
+    [companyProfileId, docType, year],
   );
   const seq = Number(res.rows[0]!.assigned);
   return `${docType}-${year}-${String(seq).padStart(4, '0')}`;
@@ -340,7 +402,8 @@ export function confirmInvoice(
       if (inv.docType === 'SELL') cogs = addSatang(cogs, asSatang(mv.cogsSatang));
     }
 
-    const number = await nextInvoiceNumber(tx, inv.docType, inv.issueDate);
+    const company = await assertActiveCompanyProfile(tx, inv.companyProfileId);
+    const number = await nextInvoiceNumber(tx, inv.companyProfileId, inv.docType, inv.issueDate);
 
     await tx.query(
       `UPDATE invoices SET
@@ -349,12 +412,16 @@ export function confirmInvoice(
          total_cogs_satang = $6,
          contact_name_snapshot = $7, contact_tax_id_snapshot = $8,
          contact_branch_snapshot = $9, contact_address_snapshot = $10,
+         company_name_snapshot = $11, company_name_en_snapshot = $12,
+         company_tax_id_snapshot = $13, company_branch_snapshot = $14,
+         company_address_snapshot = $15, company_phone_snapshot = $16,
          updated_at = now()
        WHERE id = $1`,
       [
         id, number, totals.subtotalSatang, totals.vatSatang, totals.totalSatang,
         inv.docType === 'SELL' ? cogs : null,
         contact.name, contact.taxId, contact.branch, contact.address,
+        company.name, company.nameEn, company.taxId, company.branch, company.address, company.phone,
       ],
     );
 

@@ -6,6 +6,8 @@ import { dateTh, thb } from '../lib/fmt.js';
 const PRINT_CSS = `@media print { .no-print { display:none !important } body { background:#fff } }`;
 
 const KIND_LABEL = { purchase: 'รายงานภาษีซื้อ', sales: 'รายงานภาษีขาย' } as const;
+type ProfileForm = Pick<CompanyProfile, 'code' | 'name' | 'nameEn' | 'taxId' | 'branch' | 'address' | 'phone' | 'active'>;
+const EMPTY_PROFILE: ProfileForm = { code: '', name: '', nameEn: '', taxId: '', branch: 'สำนักงานใหญ่', address: '', phone: '', active: true };
 
 export function VatReportPage(): JSX.Element {
   const [kind, setKind] = useState<'purchase' | 'sales'>('purchase');
@@ -13,42 +15,47 @@ export function VatReportPage(): JSX.Element {
   const [report, setReport] = useState<VatReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [profile, setProfile] = useState<CompanyProfile | null>(null);
+  const [profiles, setProfiles] = useState<CompanyProfile[]>([]);
+  const [companyProfileId, setCompanyProfileId] = useState('');
+  const [profile, setProfile] = useState<ProfileForm | null>(null);
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    api.get<VatReport>(`/vat-reports/${kind}?ym=${ym}`).then(setReport).catch((e) => setError(String(e)));
-  }, [kind, ym]);
+    if (!companyProfileId) return;
+    const q = new URLSearchParams({ ym, companyProfileId });
+    api.get<VatReport>(`/vat-reports/${kind}?${q}`).then(setReport).catch((e) => setError(String(e)));
+  }, [kind, ym, companyProfileId]);
   useEffect(() => load(), [load]);
 
-  useEffect(() => {
-    api.get<Record<string, unknown>>('/settings').then((s) => {
-      setProfile({
-        name: String(s.company_name ?? ''),
-        nameEn: String(s.company_name_en ?? ''),
-        taxId: String(s.company_tax_id ?? ''),
-        branch: String(s.company_branch ?? 'สำนักงานใหญ่'),
-        address: String(s.company_address ?? ''),
-        phone: String(s.company_phone ?? ''),
-      });
-    }).catch(() => undefined);
+  const loadProfiles = useCallback(() => {
+    api.get<CompanyProfile[]>('/company-profiles?includeInactive=true').then((items) => {
+      setProfiles(items);
+      setCompanyProfileId((current) => current || items.find((item) => item.active)?.id || '');
+    }).catch((e) => setError(String(e)));
   }, []);
+  useEffect(() => loadProfiles(), [loadProfiles]);
+
+  const editProfile = (item?: CompanyProfile): void => {
+    setEditingProfileId(item?.id ?? null);
+    setProfile(item ? {
+      code: item.code, name: item.name, nameEn: item.nameEn, taxId: item.taxId,
+      branch: item.branch, address: item.address, phone: item.phone, active: item.active,
+    } : { ...EMPTY_PROFILE });
+    setProfileOpen(true);
+    setProfileMsg(null);
+  };
 
   const saveProfile = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!profile) return;
     setProfileMsg(null);
     try {
-      await api.patch('/settings', {
-        company_name: profile.name,
-        company_name_en: profile.nameEn,
-        company_tax_id: profile.taxId,
-        company_branch: profile.branch,
-        company_address: profile.address,
-        company_phone: profile.phone,
-      });
+      if (editingProfileId) await api.patch(`/company-profiles/${editingProfileId}`, profile);
+      else await api.post('/company-profiles', profile);
       setProfileMsg('บันทึกแล้ว');
+      loadProfiles();
       load();
     } catch (err) {
       setProfileMsg(err instanceof ApiRequestError ? err.api.message : String(err));
@@ -62,32 +69,58 @@ export function VatReportPage(): JSX.Element {
       <div className="no-print">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">รายงานภาษีมูลค่าเพิ่ม (ภ.พ.30)</h1>
-          <button type="button" className="text-sm underline" onClick={() => setProfileOpen((o) => !o)}>
-            ตั้งค่าข้อมูลบริษัท
-          </button>
+          <div className="flex gap-2 text-sm">
+            <button type="button" className="rounded border px-3 py-1.5" onClick={() => editProfile(profiles.find((p) => p.id === companyProfileId))}>แก้ไขบริษัทนี้</button>
+            <button type="button" className="rounded bg-slate-900 px-3 py-1.5 text-white" onClick={() => editProfile()}>+ เพิ่มบริษัท</button>
+          </div>
         </div>
 
         {profileOpen && profile && (
-          <form onSubmit={saveProfile} className="mt-3 grid grid-cols-2 gap-3 rounded-lg border bg-white p-4 text-sm">
+          <form onSubmit={saveProfile} className="mt-3 grid grid-cols-2 gap-3 rounded-lg border border-slate-300 bg-white p-4 text-sm shadow-sm">
+            <div className="col-span-2 flex items-center justify-between border-b pb-2">
+              <strong>{editingProfileId ? 'แก้ไขโปรไฟล์บริษัท' : 'เพิ่มโปรไฟล์บริษัท'}</strong>
+              <button type="button" className="text-slate-500" onClick={() => setProfileOpen(false)}>ปิด</button>
+            </div>
+            <div className="col-span-2 flex flex-wrap gap-2 rounded bg-slate-100 p-2">
+              {profiles.map((item) => (
+                <button key={item.id} type="button" onClick={() => editProfile(item)}
+                  className={`rounded border px-2 py-1 ${editingProfileId === item.id ? 'border-slate-900 bg-white font-semibold' : 'border-slate-300'} ${item.active ? '' : 'text-slate-400 line-through'}`}>
+                  {item.code} · {item.name}
+                </button>
+              ))}
+            </div>
             {([
+              ['code', 'รหัสบริษัท (เช่น MAIN, SHOP2)'],
               ['name', 'ชื่อบริษัท (ไทย)'], ['nameEn', 'ชื่อบริษัท (อังกฤษ)'],
               ['taxId', 'เลขประจำตัวผู้เสียภาษี'], ['branch', 'สาขา'],
               ['address', 'ที่อยู่'], ['phone', 'โทรศัพท์'],
-            ] as [keyof CompanyProfile, string][]).map(([k, label]) => (
+            ] as [keyof ProfileForm, string][]).map(([k, label]) => (
               <label key={k} className="flex flex-col">
                 {label}
-                <input className="mt-1 rounded border px-2 py-1" value={profile[k]}
+                <input className="mt-1 rounded border px-2 py-1" value={String(profile[k])}
                   onChange={(e) => setProfile({ ...profile, [k]: e.target.value })} />
               </label>
             ))}
             <div className="col-span-2 flex items-center gap-3">
               <button type="submit" className="rounded bg-slate-900 px-4 py-1.5 text-white">บันทึก</button>
+              {editingProfileId && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={profile.active} onChange={(e) => setProfile({ ...profile, active: e.target.checked })} />
+                  เปิดใช้งานบริษัทนี้
+                </label>
+              )}
               {profileMsg && <span className="text-slate-500">{profileMsg}</span>}
             </div>
           </form>
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+          <label className="flex items-center gap-2 rounded border border-slate-400 bg-white px-3 py-1.5 font-medium">
+            บริษัท
+            <select className="bg-transparent" value={companyProfileId} onChange={(e) => setCompanyProfileId(e.target.value)}>
+              {profiles.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}
+            </select>
+          </label>
           {(['purchase', 'sales'] as const).map((k) => (
             <button key={k} type="button" onClick={() => setKind(k)}
               className={`rounded border px-3 py-1 ${kind === k ? 'bg-slate-900 text-white' : ''}`}>
@@ -96,7 +129,7 @@ export function VatReportPage(): JSX.Element {
           ))}
           <input type="month" className="rounded border px-2 py-1" value={ym} onChange={(e) => setYm(e.target.value)} />
           <a className="rounded border px-3 py-1 hover:bg-slate-100"
-            href={exportUrl(kind === 'purchase' ? 'vat-purchase' : 'vat-sales', `?ym=${ym}`)}>
+            href={exportUrl(kind === 'purchase' ? 'vat-purchase' : 'vat-sales', `?ym=${ym}&companyProfileId=${companyProfileId}`)}>
             ดาวน์โหลด CSV
           </a>
           <button type="button" className="rounded border px-3 py-1 hover:bg-slate-100" onClick={() => window.print()}>
