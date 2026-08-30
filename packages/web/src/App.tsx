@@ -2,18 +2,23 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from './api/client.js';
 import { useOffline } from './offline/store.js';
 import { BackupPage } from './pages/BackupPage.js';
+import { ContactsPage } from './pages/ContactsPage.js';
 import { DashboardPage } from './pages/DashboardPage.js';
 import { ImportPage } from './pages/ImportPage.js';
+import { InvoicePrint } from './pages/InvoicePrint.js';
+import { InvoicesPage } from './pages/InvoicesPage.js';
 import { ReportsPage } from './pages/ReportsPage.js';
 import { StockPage } from './pages/StockPage.js';
 import { SyncPage } from './pages/SyncPage.js';
 import { UnlockScreen } from './pages/UnlockScreen.js';
+import { VatReportPage } from './pages/VatReportPage.js';
 
-type View = 'dashboard' | 'stock' | 'reports' | 'import' | 'sync' | 'backup';
+type View = 'dashboard' | 'stock' | 'invoices' | 'contacts' | 'vat' | 'reports' | 'import' | 'sync' | 'backup';
 
 export function App(): JSX.Element {
   const [view, setView] = useState<View>('dashboard');
   const [locked, setLocked] = useState<boolean | null>(null);
+  const [printInvoiceId, setPrintInvoiceId] = useState<string | null>(null);
   const { online, pendingCount, conflictCount, refresh } = useOffline();
 
   const checkAuth = useCallback(async () => {
@@ -38,6 +43,7 @@ export function App(): JSX.Element {
 
   if (locked === null) return <div className="p-8 text-slate-400">…</div>;
   if (locked) return <UnlockScreen onUnlocked={() => setLocked(false)} />;
+  if (printInvoiceId) return <InvoicePrint id={printInvoiceId} onClose={() => setPrintInvoiceId(null)} />;
 
   const queued = pendingCount + conflictCount;
 
@@ -50,6 +56,15 @@ export function App(): JSX.Element {
         </NavButton>
         <NavButton active={view === 'stock'} onClick={() => setView('stock')}>
           สต็อก
+        </NavButton>
+        <NavButton active={view === 'invoices'} onClick={() => setView('invoices')}>
+          ใบกำกับภาษี
+        </NavButton>
+        <NavButton active={view === 'contacts'} onClick={() => setView('contacts')}>
+          ผู้ติดต่อ
+        </NavButton>
+        <NavButton active={view === 'vat'} onClick={() => setView('vat')}>
+          รายงานภาษี
         </NavButton>
         <NavButton active={view === 'reports'} onClick={() => setView('reports')}>
           รายงาน
@@ -74,6 +89,9 @@ export function App(): JSX.Element {
       )}
       {view === 'dashboard' && <DashboardPage />}
       {view === 'stock' && <StockPage />}
+      {view === 'invoices' && <InvoicesPage onPrint={setPrintInvoiceId} />}
+      {view === 'contacts' && <ContactsPage />}
+      {view === 'vat' && <VatReportPage />}
       {view === 'reports' && <ReportsPage />}
       {view === 'import' && <ImportPage />}
       {view === 'sync' && <SyncPage />}

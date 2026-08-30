@@ -151,3 +151,97 @@ export interface BackupStatus {
   verifiedCount: number;
   latest: Backup | null;
 }
+
+// ---- tax invoices (module 0004) ----
+export interface Contact {
+  id: string;
+  kind: 'SUPPLIER' | 'CUSTOMER' | 'BOTH';
+  name: string;
+  taxId: string | null;
+  branch: string | null;
+  address: string | null;
+  phone: string | null;
+  note: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Invoice {
+  id: string;
+  docType: 'BUY' | 'SELL';
+  invoiceNumber: string | null;
+  contactId: string;
+  issueDate: string;
+  status: 'DRAFT' | 'CONFIRMED' | 'VOID';
+  subtotalSatang: number;
+  vatSatang: number;
+  totalSatang: number;
+  totalCogsSatang: number | null;
+  contactNameSnapshot: string | null;
+  contactTaxIdSnapshot: string | null;
+  contactBranchSnapshot: string | null;
+  contactAddressSnapshot: string | null;
+  referenceNo: string | null;
+  note: string | null;
+  confirmedAt: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvoiceListRow extends Invoice {
+  contactName: string;
+}
+
+export interface InvoiceLine {
+  id: string;
+  lineNo: number;
+  productId: string;
+  productSku?: string;
+  productName?: string;
+  description: string | null;
+  quantity: string;
+  unitPriceSatang: number;
+  vatRate: number;
+  lineNetSatang: number;
+  lineVatSatang: number;
+  lineTotalSatang: number;
+}
+
+export interface CompanyProfile {
+  name: string;
+  nameEn: string;
+  taxId: string;
+  branch: string;
+  address: string;
+  phone: string;
+}
+
+export interface InvoiceDetail {
+  invoice: Invoice;
+  lines: InvoiceLine[];
+  contact: Contact | null;
+  company: CompanyProfile;
+}
+
+export interface VatReportRow {
+  seq: number;
+  issueDate: string;
+  invoiceNumber: string;
+  contactName: string;
+  contactTaxId: string | null;
+  contactBranch: string | null;
+  netSatang: number;
+  vatSatang: number;
+  totalSatang: number;
+}
+
+export interface VatReport {
+  kind: 'purchase' | 'sales';
+  ym: string;
+  company: CompanyProfile;
+  rows: VatReportRow[];
+  totals: { netSatang: number; vatSatang: number; totalSatang: number; count: number };
+}
